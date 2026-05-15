@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  # PostgreSQL with pgvector extension
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: dspatch_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dspatch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-dspatch}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dspatch}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # DSPatch Voice Agent (Python / Pipecat)
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: dspatch_agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8765:8765"  # WebSocket port for Twilio media stream
+      - "5000:5000"  # Flask webhook server
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./agent:/app
+    command: python main.py
+
+  # Owner Dashboard (static files via nginx)
+  dashboard:
+    image: nginx:alpine
+    container_name: dspatch_dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    depends_on:
+      - agent
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: dspatch_network
