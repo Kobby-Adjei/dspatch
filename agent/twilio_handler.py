@@ -16,6 +16,13 @@ from ticketing.ticket_router import TicketRouter
 app = Flask(__name__)
 ticket_router = TicketRouter()
 
+DEMO_BUSINESS_ID = os.getenv("DEMO_BUSINESS_ID", "detroit-plumbing-co")
+DEMO_INDUSTRY = os.getenv("DEMO_INDUSTRY", "home_services")
+
+EMERGENCY_KEYWORDS = ("flood", "flooding", "burst pipe", "no heat", "no hot water", "gas leak")
+URGENT_KEYWORDS = ("broken", "not working", "leaking", "backed up")
+HIGH_SENTIMENT_WORDS = ("frustrated", "unacceptable", "furious", "angry", "upset")
+
 class TwilioWebhookHandler:
     """Handles Twilio webhooks for voice and SMS."""
 
@@ -37,11 +44,34 @@ def voice_webhook():
 
 @app.route("/sms", methods=["POST"])
 def sms_webhook():
-    """Handle incoming SMS messages via Twilio."""
+    """Handle incoming SMS messages and create a typed operational ticket."""
     incoming_msg = request.form.get("Body", "").strip()
+    customer_phone = request.form.get("From", "")
+    business_phone = request.form.get("To", "")
+    print(f"[sms] inbound message received From={customer_phone} To={business_phone}")
+
+    urgency = classify_urgency(incoming_msg)
+    ticket_type = classify_ticket_type(incoming_msg, DEMO_INDUSTRY)
+    priority = priority_from_urgency(urgency)
+    suggested_action = suggested_action_for_urgency(urgency)
+
+    ticket = ticket_router.create_ticket(
+        business_id=DEMO_BUSINESS_ID,
+        customer_phone=customer_phone,
+        issue_summary=build_issue_summary(incoming_msg, urgency),
+        ticket_type=ticket_type,
+        urgency=urgency,
+        raw_message=incoming_msg,
+        channel="sms",
+        priority=priority,
+        suggested_action=suggested_action,
+        industry=DEMO_INDUSTRY,
+    )
+    print(f"[ticket] {ticket.ticket_type} ticket created: {ticket.id}")
+
     response = MessagingResponse()
-    response.message(f"DSPatch received your message: {incoming_msg}. We'll follow up shortly!")
-    return str(response)
+    response.message(build_customer_response(urgency))
+    return Response(str(response), mimetype="text/xml")
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -153,6 +183,78 @@ def _ticket_filters():
         if value:
             filters[key] = value
     return filters
+
+def classify_urgency(message: str) -> str:
+    text = message.lower()
+    emergency_match = _first_keyword_match(text, EMERGENCY_KEYWORDS)
+    if emergency_match:
+        print(f"[urgency] emergency keyword detected: {emergency_match}")
+        return "emergency"
+    if _first_keyword_match(text, URGENT_KEYWORDS):
+        return "urgent"
+    if _first_keyword_match(text, HIGH_SENTIMENT_WORDS):
+        return "high"
+    if any(word in text for word in ("hours", "open", "closed", "close")):
+        return "low"
+    return "medium"
+
+def classify_ticket_type(message: str, industry: str) -> str:
+    text = message.lower()
+    if industry == "home_services":
+        if any(word in text for word in EMERGENCY_KEYWORDS):
+            return "Emergency Service"
+        if any(word in text for word in ("appointment", "schedule", "book", "visit")):
+            return "Appointment Request"
+        if any(word in text for word in ("quote", "cost", "price", "estimate", "how much", "hours")):
+            return "Quote Request"
+        return "Status Update" if "status" in text else "Quote Request"
+    if industry == "hospitality":
+        if any(word in text for word in ("reservation", "reserve", "table")):
+            return "Reservation"
+        if any(word in text for word in ("order", "pickup", "delivery")):
+            return "Food Order"
+        if any(word in text for word in ("complaint", "wrong", "cold", "bad", "unacceptable")):
+            return "Complaint"
+        return "Catering Inquiry"
+    if industry == "retail":
+        if any(word in text for word in ("return", "exchange", "refund")):
+            return "Return Request"
+        if any(word in text for word in ("order", "buy", "purchase", "hold")):
+            return "Order Request"
+        if any(word in text for word in ("complaint", "damaged", "wrong", "unacceptable")):
+            return "Complaint"
+        return "Product Inquiry"
+    return "Quote Request"
+
+def priority_from_urgency(urgency: str) -> str:
+    if urgency in {"emergency", "urgent", "high"}:
+        return "high"
+    if urgency == "low":
+        return "low"
+    return "medium"
+
+def suggested_action_for_urgency(urgency: str) -> str:
+    if urgency == "emergency":
+        return "Immediate callback"
+    if urgency in {"urgent", "high"}:
+        return "Priority follow-up"
+    return "Standard follow-up"
+
+def build_issue_summary(message: str, urgency: str) -> str:
+    text = message.lower()
+    if "flood" in text:
+        return "Basement flooding - water leak"
+    if urgency == "emergency":
+        return message or "Emergency customer request"
+    return message or "Customer inquiry"
+
+def build_customer_response(urgency: str) -> str:
+    if urgency == "emergency":
+        return "Your emergency request has been received. A technician from Detroit Plumbing Co. will contact you shortly."
+    return "DSPatch received your message. We'll follow up shortly!"
+
+def _first_keyword_match(text: str, keywords) -> str:
+    return next((keyword for keyword in keywords if keyword in text), "")
 
 if __name__ == "__main__":
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"

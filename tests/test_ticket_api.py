@@ -45,7 +45,8 @@ def _install_twilio_stub():
             self.messages.append(body)
 
         def __str__(self):
-            return "<Response />"
+            body = "".join(f"<Message>{message}</Message>" for message in self.messages)
+            return f"<Response>{body}</Response>"
 
     voice_response.VoiceResponse = VoiceResponse
     voice_response.Connect = Connect
@@ -100,6 +101,45 @@ class TicketApiTest(unittest.TestCase):
         self.assertEqual(data["ticket"]["business_id"], "detroit-plumbing-co")
         self.assertEqual(data["ticket"]["urgency"], "emergency")
         self.assertEqual(data["ticket"]["ticket_type"], "Emergency Service")
+
+    def test_sms_creates_typed_emergency_ticket(self):
+        response = self.client.post(
+            "/sms",
+            data={
+                "From": "+13135550101",
+                "To": "+13135550100",
+                "Body": "My basement is flooding.",
+            },
+        )
+
+        tickets_response = self.client.get("/businesses/detroit-plumbing-co/tickets?urgency=emergency")
+        data = tickets_response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Your emergency request has been received", response.get_data(as_text=True))
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["tickets"][0]["ticket_type"], "Emergency Service")
+        self.assertEqual(data["tickets"][0]["urgency"], "emergency")
+        self.assertEqual(data["tickets"][0]["priority"], "high")
+        self.assertEqual(data["tickets"][0]["suggested_action"], "Immediate callback")
+        self.assertEqual(data["tickets"][0]["issue_summary"], "Basement flooding - water leak")
+
+    def test_sms_question_creates_lower_priority_quote_request(self):
+        self.client.post(
+            "/sms",
+            data={
+                "From": "+13135550102",
+                "To": "+13135550100",
+                "Body": "What are your hours?",
+            },
+        )
+
+        tickets_response = self.client.get("/businesses/detroit-plumbing-co/tickets?ticket_type=Quote+Request")
+        data = tickets_response.get_json()
+
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["tickets"][0]["urgency"], "low")
+        self.assertEqual(data["tickets"][0]["priority"], "low")
 
     def test_create_ticket_missing_fields_returns_json_400(self):
         response = self.client.post(
