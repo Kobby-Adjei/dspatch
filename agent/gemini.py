@@ -1,32 +1,153 @@
-# agent/gemini.py
-# Google Gemini Live voice layer
-
 import os
+import audioop
 import asyncio
-import google.generativeai as genai
 
-class GeminiLiveService:
-    """Google Gemini Live API integration for real-time voice."""
+GEMINI_ENABLED = os.getenv("GEMINI_ENABLED", "false").strip().lower() in ("true", "1", "yes")
 
-    def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        genai.configure(api_key=self.api_key)
-        self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-live")
+GEMINI_INPUT_RATE  = 16000
+GEMINI_OUTPUT_RATE = 24000
+TWILIO_RATE        = 8000
 
-    async def stream_audio(self, audio_input: bytes) -> bytes:
-        """Stream audio through Gemini Live API and return audio response."""
-        model = genai.GenerativeModel(self.model_name)
-        # Real-time streaming session
-        async with model.connect() as session:
-            await session.send(audio_input, end_of_turn=True)
-            response_audio = b""
-            async for response in session.receive():
-                if response.data:
-                    response_audio += response.data
-            return response_audio
 
-    async def text_to_speech(self, text: str) -> bytes:
-        """Convert text to speech using Gemini."""
-        model = genai.GenerativeModel(self.model_name)
-        response = await model.generate_content_async(text)
-        return response.audio if hasattr(response, 'audio') else b""
+def log(msg):
+    print(msg, flush=True)
+
+
+class GeminiLiveSession:
+
+    def __init__(self, business_profile: dict, on_transcript):
+        self.business_profile = business_profile
+        self.on_transcript    = on_transcript
+        self.transcript_parts = []
+        self.client           = None
+
+        log(f"[gemini] init GEMINI_ENABLED={GEMINI_ENABLED}")
+
+        if GEMINI_ENABLED:
+            from google import genai
+            self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            log("[gemini] client created")
+
+    async def run(self, audio_stream):
+        if not GEMINI_ENABLED:
+            log("[gemini] GEMINI_ENABLED=false, simulating transcript")
+            async for _ in audio_stream:
+                pass
+            await self._simulate()
+            return
+
+        from google.genai import types
+
+        config = types.LiveConnectConfig(
+            response_modalities=["AUDIO"],
+            system_instruction=self._system_prompt(),
+            input_audio_transcription=types.AudioTranscriptionConfig(),
+        )
+
+        audio_out: asyncio.Queue = asyncio.Queue()
+
+        async def _send(session):
+            in_state = None
+            chunks = 0
+            async for mulaw_chunk in audio_stream:
+                pcm_8k = audioop.ulaw2lin(mulaw_chunk, 2)
+                pcm_16k, in_state = audioop.ratecv(
+                    pcm_8k, 2, 1, TWILIO_RATE, GEMINI_INPUT_RATE, in_state
+                )
+                await session.send_realtime_input(
+                    media=types.Blob(data=pcm_16k, mime_type="audio/pcm;rate=16000")
+                )
+                chunks += 1
+                if chunks == 1:
+                    log(f"[gemini] first audio chunk sent to Gemini")
+            log(f"[gemini] _send done after {chunks} chunks")
+
+        async def _receive(session):
+            out_state = None
+            chunks_out = 0
+            try:
+                while True:
+                    got_any = False
+                    async for response in session.receive():
+                        got_any = True
+                        sc = getattr(response, "server_content", None)
+                        if sc:
+                            it = getattr(sc, "input_transcription", None)
+                            if it and getattr(it, "text", None):
+                                log(f"[gemini] transcript chunk: {it.text!r}")
+                                self.transcript_parts.append(it.text)
+                        if response.data:
+                            pcm_8k, out_state = audioop.ratecv(
+                                response.data, 2, 1, GEMINI_OUTPUT_RATE, TWILIO_RATE, out_state
+                            )
+                            mulaw = audioop.lin2ulaw(pcm_8k, 2)
+                            await audio_out.put(mulaw)
+                            chunks_out += 1
+                            if chunks_out == 1:
+                                log(f"[gemini] first audio response from Gemini ({len(response.data)}b)")
+                    if not got_any:
+                        # session closed cleanly
+                        break
+                    log(f"[gemini] turn complete, waiting for next turn")
+            except Exception as exc:
+                log(f"[gemini] _receive error: {exc}")
+            finally:
+                log(f"[gemini] _receive done, sent {chunks_out} audio chunks to Twilio")
+                await audio_out.put(None)
+
+        log("[gemini] connecting to Gemini Live...")
+        try:
+            async with self.client.aio.live.connect(
+                model="models/gemini-2.5-flash-native-audio-latest",
+                config=config,
+            ) as session:
+                log("[gemini] connected, sending greeting trigger")
+
+                await session.send_client_content(
+                    turns=[types.Content(
+                        role="user",
+                        parts=[types.Part(text="A customer just called. Greet them warmly and ask how you can help.")]
+                    )],
+                    turn_complete=True,
+                )
+
+                send_task    = asyncio.create_task(_send(session))
+                receive_task = asyncio.create_task(_receive(session))
+
+                while True:
+                    chunk = await audio_out.get()
+                    if chunk is None:
+                        break
+                    yield chunk
+
+                send_task.cancel()
+                await asyncio.gather(send_task, receive_task, return_exceptions=True)
+
+        except Exception as exc:
+            log(f"[gemini] session error: {exc}")
+
+        transcript = " ".join(self.transcript_parts).strip()
+        if transcript:
+            log(f"[gemini] final transcript: {transcript}")
+            await self.on_transcript(transcript)
+
+    async def _simulate(self):
+        await asyncio.sleep(0.3)
+        simulated = "My basement is flooding and I need help immediately."
+        log(f"[gemini] simulated transcript: {simulated}")
+        await self.on_transcript(simulated)
+
+    def _system_prompt(self) -> str:
+        name      = self.business_profile.get("name", "this business")
+        services  = ", ".join(self.business_profile.get("services", []))
+        hours     = self.business_profile.get("hours", {})
+        hours_str = ", ".join(f"{k}: {v}" for k, v in hours.items())
+
+        return (
+            f"You are the voice assistant for {name}. "
+            f"Services offered: {services}. "
+            f"Business hours: {hours_str}. "
+            f"Collect the customer's name, issue description, and urgency. "
+            f"If this is an emergency, acknowledge it immediately and say a team member will contact them shortly. "
+            f"Keep responses brief. Ask only one question at a time."
+        )

@@ -1,0 +1,48 @@
+{
+  "id": "detroit-plumbing-co",
+  "name": "Detroit Plumbing Co.",
+  "industry": "home_services",
+  "phone": "+13135550100",
+  "hours": {
+    "mon-fri": "8am-6pm",
+    "sat": "9am-3pm",
+    "sun": "closed"
+  },
+  "services": [
+    "Emergency plumbing",
+    "Drain cleaning",
+    "Water heater installation",
+    "Pipe repair",
+    "Sump pump installation",
+    "Fixture replacement"
+  ],
+  "pricing": [
+    "Emergency visit starts at $149",
+    "Drain cleaning starts at $99",
+    "Water heater installation starts at $299"
+  ],
+  "service_area": ["Detroit", "Dearborn", "Southfield", "Warren", "Sterling Heights"],
+  "faqs": [
+    {
+      "question": "Do you offer emergency services?",
+      "answer": "Yes, we offer 24/7 emergency plumbing service."
+    },
+    {
+      "question": "What areas do you serve?",
+      "answer": "We serve Detroit, Dearborn, Southfield, Warren, and Sterling Heights."
+    },
+    {
+      "question": "How quickly can you respond to an emergency?",
+      "answer": "We aim to have a technician on-site within 60 minutes for emergencies."
+    },
+    {
+      "question": "Do you provide free estimates?",
+      "answer": "Yes, we provide free estimates for non-emergency work."
+    }
+  ],
+  "routing_rules": {
+    "emergency_keywords": ["flood", "flooding", "burst pipe", "no heat", "no hot water", "gas leak", "sewage", "overflow"],
+    "urgent_keywords": ["broken", "not working", "leaking", "backed up", "clogged", "dripping"],
+    "after_hours_action": "create urgent ticket"
+  }
+}

@@ -18,7 +18,7 @@ class BusinessSetup:
         self.db_url = os.getenv("DATABASE_URL")
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "ibm/slate-125m-english-rtrvr")
 
-    def load_business_profile(self, profile: Dict) -> bool:
+    def load_business_profile(self, profile: Dict, area_code: str = None) -> bool:
         """
         Load business profile data including:
         - Business name, address, hours
@@ -26,16 +26,33 @@ class BusinessSetup:
         - FAQs
         - Staff names
         - Pricing
+
+        If no phone number is provided, one is automatically provisioned
+        via Twilio and wired up to this DSPatch deployment.
         """
-        required_fields = ["name", "phone", "hours", "services"]
+        required_fields = ["name", "hours", "services"]
         for field in required_fields:
             if field not in profile:
                 raise ValueError(f"Missing required field: {field}")
+
+        if not profile.get("phone"):
+            profile = self._provision_number(profile, area_code)
 
         self._save_profile(profile)
         self._build_knowledge_chunks(profile)
         print(f"[BusinessSetup] Profile loaded for: {profile['name']}")
         return True
+
+    def _provision_number(self, profile: Dict, area_code: str = None) -> Dict:
+        """Auto-provisions a Twilio number and adds it to the profile."""
+        try:
+            from onboarding.number_provisioner import provision_number
+            result = provision_number(self.business_id, area_code=area_code)
+            profile = {**profile, "phone": result["phone_number"], "twilio_sid": result["sid"]}
+            print(f"[BusinessSetup] Provisioned number: {result['phone_number']}")
+        except Exception as exc:
+            print(f"[BusinessSetup] Number provisioning failed: {exc} — continuing without phone")
+        return profile
 
     def _save_profile(self, profile: Dict):
         """Persist business profile to database."""
