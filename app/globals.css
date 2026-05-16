@@ -84,6 +84,67 @@ a {
     linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.62) 76%, #000 100%);
 }
 
+/* ── Onboarding animations ── */
+
+@keyframes stepForward {
+  from { opacity: 0; transform: translateX(32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes stepBack {
+  from { opacity: 0; transform: translateX(-32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes successRise {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.step-forward { animation: stepForward 0.42s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.step-back    { animation: stepBack    0.42s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.step-success { animation: successRise 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.step-fade    { animation: fadeIn      0.3s ease both; }
+
+/* ── D Loader ── */
+
+@keyframes arcSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes dPulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.8; transform: scale(0.97); }
+}
+
+@keyframes loaderIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes loaderOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.d-loader-enter { animation: loaderIn  0.22s ease both; }
+.d-loader-exit  { animation: loaderOut 0.32s ease both; }
+
+.d-arc {
+  transform-origin: center;
+  animation: arcSpin 1.1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.d-mark {
+  animation: dPulse 2.2s ease-in-out infinite;
+}
+
 .operator-carousel-overlay::after {
   content: "";
   position: absolute;

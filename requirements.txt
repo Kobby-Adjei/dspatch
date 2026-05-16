@@ -2,6 +2,7 @@
 flask>=3.0
 flask-cors>=4.0
 twilio>=9.0
+python-dotenv>=1.0
 
 # WebSocket server for Twilio MediaStream voice bridge
 websockets>=15.0
