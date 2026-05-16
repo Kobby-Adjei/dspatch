@@ -37,7 +37,10 @@ ibmcloud ce secret create --name dspatch-env \
   --from-literal CLOUDANT_APIKEY="${CLOUDANT_APIKEY}" \
   --from-literal TWILIO_ACCOUNT_SID="${TWILIO_ACCOUNT_SID}" \
   --from-literal TWILIO_AUTH_TOKEN="${TWILIO_AUTH_TOKEN}" \
+  --from-literal TWILIO_API_KEY="${TWILIO_API_KEY}" \
+  --from-literal TWILIO_API_SECRET="${TWILIO_API_SECRET}" \
   --from-literal TWILIO_VALIDATE_SIGNATURES="${TWILIO_VALIDATE_SIGNATURES}" \
+  --from-literal FLASK_PUBLIC_URL="${FLASK_PUBLIC_URL}" \
   --from-literal DEMO_BUSINESS_ID="${DEMO_BUSINESS_ID}"
 
 # ── Deploy Flask webhook server ───────────────────────────────────────────────

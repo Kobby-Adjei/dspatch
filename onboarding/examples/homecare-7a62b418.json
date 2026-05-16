@@ -1,0 +1,36 @@
+{
+  "id": "homecare-7a62b418",
+  "name": "HomeCare",
+  "industry": "hospitality",
+  "hours": {
+    "mon-fri": "8am \u2013 6pm",
+    "sat-sun": "9am \u2013 3pm"
+  },
+  "services": [
+    "Reservations",
+    "Takeout orders",
+    "Catering inquiries",
+    "Complaint handling",
+    "Event booking",
+    "Hours inquiry"
+  ],
+  "pricing": [],
+  "faqs": [],
+  "routing_rules": {
+    "emergency_keywords": [
+      "flood",
+      "flooding",
+      "burst pipe",
+      "no heat",
+      "gas leak"
+    ],
+    "urgent_keywords": [
+      "broken",
+      "not working",
+      "leaking",
+      "backed up"
+    ]
+  },
+  "phone": "+15707506144",
+  "twilio_sid": "PN485853926def9561d247d333df2fd81d"
+}

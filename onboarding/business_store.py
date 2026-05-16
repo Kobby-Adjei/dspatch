@@ -33,6 +33,7 @@ def save_business(profile: dict) -> dict:
     business_id = profile["id"]
 
     if not CLOUDANT_ENABLED:
+        os.makedirs("onboarding/examples", exist_ok=True)
         path = f"onboarding/examples/{business_id}.json"
         with open(path, "w") as f:
             json.dump(profile, f, indent=2)

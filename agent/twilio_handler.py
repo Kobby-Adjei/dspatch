@@ -1,7 +1,10 @@
 import os
 import uuid
+from dotenv import load_dotenv
 from flask import Flask, request, Response, jsonify
 from flask_cors import CORS
+
+load_dotenv()
 from twilio.twiml.voice_response import VoiceResponse, Connect, Stream, Parameter
 from twilio.twiml.messaging_response import MessagingResponse
 
