@@ -229,6 +229,34 @@ class TicketApiTest(unittest.TestCase):
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["tickets"][0]["ticket_type"], "Appointment Request")
 
+    def test_dashboard_ticket_queries_are_supported(self):
+        emergency = self._post_ticket().get_json()["ticket"]
+        appointment = self._post_ticket(
+            customer_phone="+13135550102",
+            issue_summary="Can I schedule a visit?",
+            ticket_type="Appointment Request",
+            urgency="medium",
+            raw_message="Can I schedule a visit?",
+        ).get_json()["ticket"]
+        quote = self._post_ticket(
+            customer_phone="+13135550103",
+            issue_summary="Need a quote.",
+            ticket_type="Quote Request",
+            urgency="low",
+            raw_message="Need a quote.",
+        ).get_json()["ticket"]
+        self.client.post(f"/tickets/{quote['id']}/resolve")
+
+        emergency_queue = self.client.get("/tickets?urgency=emergency&status=open").get_json()
+        appointment_requests = self.client.get("/tickets?ticket_type=Appointment+Request").get_json()
+        all_open = self.client.get("/tickets?status=open").get_json()
+        resolved_today = self.client.get("/tickets?status=resolved&date_from=today").get_json()
+
+        self.assertEqual([ticket["id"] for ticket in emergency_queue["tickets"]], [emergency["id"]])
+        self.assertEqual([ticket["id"] for ticket in appointment_requests["tickets"]], [appointment["id"]])
+        self.assertEqual({ticket["id"] for ticket in all_open["tickets"]}, {emergency["id"], appointment["id"]})
+        self.assertEqual([ticket["id"] for ticket in resolved_today["tickets"]], [quote["id"]])
+
     def test_patch_ticket_accepts_status_priority_and_assigned_to(self):
         created = self._post_ticket().get_json()["ticket"]
 
