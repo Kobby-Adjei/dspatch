@@ -1,7 +1,7 @@
 version: '3.9'
 
 services:
-  # PostgreSQL with pgvector extension
+  # PostgreSQL with pgvector (local dev only — replaced by Cloudant in production)
   db:
     image: pgvector/pgvector:pg16
     container_name: dspatch_db
@@ -14,32 +14,50 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dspatch}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # DSPatch Voice Agent (Python / Pipecat)
-  agent:
+  # Flask webhook server (/sms + /voice)
+  flask:
     build:
-      context: ./agent
+      context: .
       dockerfile: Dockerfile
-    container_name: dspatch_agent
+    container_name: dspatch_flask
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql://dspatch:password@db:5432/dspatch
     ports:
-      - "8765:8765"  # WebSocket port for Twilio media stream
-      - "5000:5000"  # Flask webhook server
+      - "5000:5000"
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./agent:/app
-    command: python main.py
+    command: python agent/twilio_handler.py
 
-  # Owner Dashboard (static files via nginx)
+  # WebSocket server (Twilio MediaStream voice bridge)
+  websocket:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dspatch_websocket
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://dspatch:password@db:5432/dspatch
+    ports:
+      - "8765:8765"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python agent/main.py
+
+  # Owner dashboard (static files via nginx)
   dashboard:
     image: nginx:alpine
     container_name: dspatch_dashboard
@@ -48,8 +66,6 @@ services:
       - "3000:80"
     volumes:
       - ./dashboard:/usr/share/nginx/html:ro
-    depends_on:
-      - agent
 
 volumes:
   postgres_data:

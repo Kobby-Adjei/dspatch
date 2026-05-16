@@ -2,7 +2,7 @@
 
 ## What We Are Building
 
-Dspatch is an AI-powered customer support system for small businesses and startups.
+Dspatch is a two-sided AI support platform for small businesses, startups, and recent graduates.
 
 The goal is simple:
 
@@ -10,19 +10,19 @@ The goal is simple:
 Enterprise customer support. Half the cost. Set up in minutes.
 ```
 
-Small businesses lose customers because they miss calls, forget follow-ups, and cannot afford expensive customer support tools or a full support team. Dspatch gives them a lightweight support system that answers calls and messages, creates tickets, routes issues, and keeps the owner organized.
+Small businesses and startups need real customer support, but enterprise tools are expensive and hiring a full support team is not realistic early on. Dspatch gives them a full AI-powered support system: calls answered, tickets routed, customer context captured, and a trained human operator available when AI needs backup.
 
-Dspatch also creates work opportunities for recent graduates. These grads become Dspatch operators who help manage AI-powered support systems for real local businesses.
+Dspatch also creates work opportunities for recent graduates. These grads become Dspatch operators who manage AI-powered support systems for real businesses, build practical AI operations experience, and help companies deliver better support.
 
 ## Mission
 
-Dspatch helps small businesses stop losing customers because they were too busy to respond.
+Dspatch makes enterprise-grade customer support accessible to small businesses while creating real operator work for recent graduates.
 
 We are building a system that makes customer support:
 
 - Affordable
 - Fast to set up
-- Easy for owners to understand
+- Easy for small teams to run
 - AI-powered but human-supervised
 - Useful from day one
 
@@ -80,11 +80,13 @@ What Dspatch gives them:
 - A network of other Dspatch operators
 - Real businesses to support
 
-## The Core User Story
+## The Core User Stories
 
-A small business owner signs up for Dspatch because they are missing customer calls and losing work.
+### Business User Story
 
-They enter their business information:
+A small business or startup signs up for Dspatch because it needs a support system but cannot afford enterprise software or a full support team.
+
+The business enters its operating context:
 
 - Business name
 - Phone number
@@ -96,7 +98,7 @@ They enter their business information:
 - Emergency rules
 - Routing rules
 
-Dspatch turns that information into a support knowledge base.
+Dspatch turns that information into a support knowledge base and connects it to calls, SMS, ticketing, and operator review.
 
 When a customer calls or texts, Dspatch:
 
@@ -106,22 +108,39 @@ When a customer calls or texts, Dspatch:
 4. Creates a support ticket.
 5. Classifies the ticket priority.
 6. Sends a useful response.
-7. Shows the ticket in the dashboard.
-8. Lets a Dspatch operator review or correct the system.
+7. Routes the issue to the right queue.
+8. Shows the ticket in the dashboard.
+9. Lets a Dspatch operator review or correct the system.
+
+The business gets customer support infrastructure without buying expensive software or hiring a full team.
+
+### Recent Graduate User Story
+
+A recent graduate joins Dspatch because they want paid, practical AI experience.
+
+Dspatch trains them to become an operator who can:
+
+- Manage AI-powered support systems.
+- Review customer tickets and AI responses.
+- Improve business FAQs, routing rules, and support knowledge.
+- Catch edge cases AI misses.
+- Support multiple businesses remotely.
+
+The graduate gets flexible paid work and real resume-worthy experience. Businesses get a human in the loop.
 
 ## Day 1 to Day 10 Usage
 
 ### Day 1
 
-The business signs up and enters its profile. Dspatch stores the business information and generates support knowledge.
+The business signs up and enters its profile. Dspatch stores the business information and generates support knowledge. A Dspatch operator can be assigned or queued for review.
 
 ### Day 2
 
-Dspatch starts handling simple texts and support requests. The owner can see tickets in the dashboard.
+Dspatch starts handling simple texts and support requests. The business can see tickets in the dashboard.
 
 ### Day 3
 
-The owner reviews the first tickets and corrects anything Dspatch misunderstood.
+The business reviews the first tickets. The operator corrects anything Dspatch misunderstood and improves the profile.
 
 ### Day 4
 
@@ -133,7 +152,7 @@ Dspatch handles common customer questions like hours, pricing, booking, reschedu
 
 ### Day 6
 
-The owner only focuses on high-priority tickets instead of answering every call manually.
+The business only focuses on high-priority tickets instead of manually handling every support request.
 
 ### Day 7
 
@@ -145,11 +164,11 @@ The operator improves automation based on those patterns.
 
 ### Day 9
 
-The owner uses Dspatch as the daily command center for customer support.
+The business uses Dspatch as the daily command center for customer support.
 
 ### Day 10
 
-Dspatch is part of the business workflow. Customers get faster responses, fewer opportunities are missed, and the business has a support system without hiring a full team.
+Dspatch is part of the business workflow. Customers get faster responses, support work is organized, and the business has an AI-plus-human support system without hiring a full team.
 
 ## What The System Must Do
 

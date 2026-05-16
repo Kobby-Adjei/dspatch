@@ -91,8 +91,7 @@ def build_support_prompt(
     context_chunks: list,
     urgency: str = "medium",
 ) -> str:
-    name    = business_profile.get("name", "this business")
-    context = "\n".join(f"- {chunk}" for chunk in context_chunks)
+    name = business_profile.get("name", "this business")
 
     urgency_instruction = {
         "emergency": "This is an EMERGENCY. Acknowledge it immediately. Tell them a team member will contact them shortly.",
@@ -102,24 +101,12 @@ def build_support_prompt(
         "low":       "This is a general inquiry. Answer directly and briefly.",
     }.get(urgency, "Handle this as a standard request.")
 
-    return f"""You are the AI assistant for {name}.
-Your job is to help customers and collect information to create an operational record.
-
-Business context:
-{context}
-
-Customer message: "{customer_message}"
-Urgency level: {urgency.upper()}
-
-Instructions:
-- {urgency_instruction}
-- Answer using only the business context above.
-- If you need more information (address, name, preferred time), ask for one thing at a time.
-- Never make up pricing, hours, or services not listed above.
-- Keep responses under 3 sentences.
-- End every response with a next step.
-
-Response:"""
+    return f"""<|system|>
+You are the AI assistant for {name}. Reply in 2 sentences maximum. Do not explain yourself. Do not continue the conversation. Do not show corrections. Just reply to the customer.
+{urgency_instruction}
+<|user|>
+{customer_message}
+<|assistant|>"""
 
 
 # ── Fallback responder ──────────────────────────────────────────────────────
@@ -163,6 +150,7 @@ def _fallback_response(business_profile: dict, message: str, urgency: str) -> st
 def _call_watsonx(prompt: str) -> str:
     from ibm_watsonx_ai import APIClient, Credentials
     from ibm_watsonx_ai.foundation_models import ModelInference
+    from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as Params
 
     credentials = Credentials(
         url     = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com"),
@@ -170,9 +158,15 @@ def _call_watsonx(prompt: str) -> str:
     )
     client = APIClient(credentials)
     model  = ModelInference(
-        model_id   = os.getenv("WATSONX_MODEL_ID", "ibm/granite-13b-chat-v2"),
+        model_id   = os.getenv("WATSONX_MODEL_ID", "meta-llama/llama-3-3-70b-instruct"),
         api_client = client,
         project_id = os.getenv("WATSONX_PROJECT_ID"),
+        params     = {
+            Params.MAX_NEW_TOKENS:  120,
+            Params.MIN_NEW_TOKENS:  10,
+            Params.TEMPERATURE:     0.7,
+            Params.STOP_SEQUENCES:  ["<|user|>", "<|system|>", "\nCustomer", "\nNext step"],
+        },
     )
     return model.generate_text(prompt=prompt)
 
