@@ -1,0 +1,47 @@
+<svg width="520" height="170" viewBox="380 310 290 380" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+    <linearGradient id="orangeGradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF8A1C"/>
+      <stop offset="55%" stop-color="#FF6A00"/>
+      <stop offset="100%" stop-color="#E95A00"/>
+    </linearGradient>
+
+    <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feFlood flood-color="#FF6A00" flood-opacity="0.28"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <path
+    d="M438 342
+       H516
+       C583 342 626 386 626 452
+       C626 518 583 556 516 556
+       H514
+       V506
+       C514 495 507 488 496 488
+       H483
+       L438 545
+       Z"
+    fill="url(#orangeGradient)"
+    filter="url(#softGlow)"
+  />
+
+  <text
+    x="512"
+    y="665"
+    text-anchor="middle"
+    fill="#F2F2F2"
+    font-family="Inter, SF Pro Display, Helvetica Neue, Arial, sans-serif"
+    font-size="62"
+    font-weight="300"
+    letter-spacing="38">
+    DSPATCH
+  </text>
+</svg>
