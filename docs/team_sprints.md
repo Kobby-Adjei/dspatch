@@ -1,43 +1,77 @@
-# Dspatch Backend Sprint Plan
+# Dspatch Sprint Plan
 
-This plan is organized for two working pairs:
+Teams:
 
 - **Team 1: Salma & Kobby**
 - **Team 2: Yasrib & Ify**
 
-The sprint goal is to make the core Dspatch journey work:
-
-1. An SMB or startup signs up.
-2. The business enters its hours, services, pricing, FAQs, service area, and routing rules.
-3. Dspatch turns that profile into support knowledge.
-4. Customers call or text.
-5. Dspatch creates tickets and can answer common questions from business context.
-6. The business sees requests and status in a dashboard/API.
-7. A Dspatch operator can review and improve the system.
+---
 
 ## Product Goal
 
-Dspatch gives small businesses enterprise-grade customer support at small-business pricing. The first working version should prove this:
+Dspatch is an AI-powered customer operations layer for small businesses.
+
+The first working version must prove this:
 
 - A business can be onboarded in under 10 minutes.
-- Dspatch can generate useful knowledge from the business profile.
-- Customers can text or call the Dspatch number.
-- Dspatch creates a ticket with customer phone, summary, channel, priority, and status.
-- Dspatch can answer common questions from the business profile.
-- The dashboard/API can show current tickets and business state.
-- A human operator can inspect and correct what AI misses.
+- Every inbound contact (call or SMS) gets an immediate AI response.
+- The AI collects structured information and detects urgency.
+- The AI creates an operational record with the correct type and priority.
+- The dashboard shows a live command center, not a generic ticket list.
+- The command center feels different depending on the business type.
+
+This is not a support chatbot. This is an intake, classification, and dispatch system.
+
+---
+
+## Core Demo Target
+
+**Business:** Detroit Plumbing Co.
+
+**Customer texts:**
+```
+My basement is flooding.
+```
+
+**DSPatch AI extracts:**
+```json
+{
+  "ticket_type": "Emergency Service",
+  "issue_type": "water leak",
+  "urgency": "emergency",
+  "priority": "high",
+  "suggested_action": "Immediate callback"
+}
+```
+
+**Dashboard shows:**
+```
+EMERGENCY SERVICE REQUEST
+Priority: HIGH
+Issue: Water Leak — 123 Main St
+Suggested Action: Immediate Callback
+Created: 2 seconds ago
+```
+
+**Customer receives:**
+```
+Your emergency request has been received.
+A technician from Detroit Plumbing Co. will contact you shortly.
+```
+
+Everything below is in service of making that demo work cleanly.
+
+---
 
 ## Pair Ownership
 
 ### Team 1: Salma & Kobby
 
-Primary ownership:
+Ownership:
 
-```text
-SMB signs up -> profile saved -> knowledge created -> AI can answer from context
 ```
-
-This team owns the product intelligence layer. Their work should be easy to debug locally with JSON files and fallback AI mode before external APIs are connected.
+Business onboards → profile saved → AI answers from business context → urgency detected
+```
 
 Owned files:
 
@@ -46,204 +80,22 @@ Owned files:
 - `.env.example`
 - `README.md`
 - `onboarding/examples/*.json`
-- Optional tests: `tests/test_business_setup.py`, `tests/test_watsonx_fallback.py`
 
-Core deliverables:
-
-- Business profile validation.
-- Sample business profiles.
-- Knowledge chunk generation.
-- Fallback AI responder.
-- Prompt builder for real watsonx.
-- Demo flow that works without IBM credentials.
+---
 
 #### Salma Tasks
 
-Salma owns business profile structure and validation.
+Salma owns business profile structure, validation, and knowledge generation.
 
-Tasks:
+**Business Profile Shape**
 
-- Define the final business profile JSON shape.
-- Add required field validation.
-- Add helpful errors for missing fields.
-- Create sample profiles:
-  - HVAC company
-  - auto shop
-  - restaurant
-- Update `BusinessSetup.load_business_profile()` so it supports:
-  - `pricing`
-  - `service_area`
-  - `faqs`
-  - `routing_rules`
-- Update `_build_knowledge_chunks()` so it generates chunks from every important profile field.
-
-Acceptance criteria:
-
-- Running `python onboarding/business_setup.py` works.
-- Missing `name`, `phone`, `hours`, or `services` gives a clear error.
-- Knowledge chunks include hours, services, pricing, service area, FAQs, and emergency rules.
-- No Twilio, Gemini, or watsonx credentials are required to test this path.
-
-#### Kobby Tasks
-
-Kobby owns AI fallback, integration, and demo reliability.
-
-Tasks:
-
-- Add `WATSONX_ENABLED=false` support in `agent/watsonx.py`.
-- When watsonx is disabled, return a deterministic fake response using the available business context.
-- Add a prompt builder:
-
-```python
-def build_support_prompt(business_profile, customer_message, context_chunks):
-    ...
-```
-
-- Add a demo path that:
-  - loads a business profile
-  - generates knowledge chunks
-  - passes a customer message
-  - returns a support answer
-- Update `.env.example` with:
-  - `WATSONX_ENABLED=false`
-  - `GEMINI_ENABLED=false`
-  - `TWILIO_VALIDATE_SIGNATURES=false`
-  - `DEMO_BUSINESS_ID=demo-plumbing-co`
-- Keep the README aligned with the current product story.
-
-Acceptance criteria:
-
-- Demo works without real IBM credentials.
-- Given this customer message:
-
-```text
-Do you serve Southfield and what does emergency service cost?
-```
-
-Dspatch can answer from the sample business profile:
-
-```text
-Yes, Detroit Plumbing Co. serves Southfield. Emergency visits start at $149.
-```
-
-- Logs clearly show:
-
-```text
-[business] profile loaded: demo-plumbing-co
-[knowledge] chunks created: 12
-[ai] WATSONX_ENABLED=false, using fallback responder
-[ai] fallback response generated
-```
-
-### Team 2: Yasrib & Ify
-
-Primary ownership:
-
-```text
-Customer texts/calls -> ticket created -> ticket can be listed/updated by dashboard/API
-```
-
-This team owns the support operations layer. Their work should be easy to debug with curl, Flask logs, and database queries.
-
-Owned files:
-
-- `ticketing/ticket_router.py`
-- `agent/twilio_handler.py`
-- New database schema file, recommended: `db/schema.sql`
-- Optional tests: `tests/test_ticket_router.py`, `tests/test_twilio_handler.py`
-
-Core deliverables:
-
-- Database schema.
-- Ticket creation, listing, status update, and resolution.
-- SMS webhook that creates tickets.
-- Message logging.
-- JSON ticket API.
-
-#### Yasrib Tasks
-
-Yasrib owns database schema and ticket logic.
-
-Tasks:
-
-- Create schema for:
-  - `businesses`
-  - `tickets`
-  - `messages`
-  - later: `calls`
-- Implement `TicketRouter.create_ticket()`.
-- Implement `TicketRouter.list_tickets()`.
-- Implement `TicketRouter.update_ticket_status()`.
-- Implement `TicketRouter.resolve_ticket()`.
-- Add priority classification tests.
-
-Acceptance criteria:
-
-- Creating a ticket without a database logs cleanly and does not crash.
-- Creating a ticket with a database persists the ticket.
-- Priority classification supports:
-  - `urgent`
-  - `high`
-  - `medium`
-  - `low`
-- Ticket rows include:
-  - `business_id`
-  - `customer_phone`
-  - `channel`
-  - `issue_summary`
-  - `raw_message`
-  - `priority`
-  - `status`
-  - `created_at`
-
-#### Ify Tasks
-
-Ify owns Twilio webhooks and ticket API routes.
-
-Tasks:
-
-- Update `/sms` so inbound SMS creates a ticket.
-- Read Twilio request fields:
-  - `From`
-  - `To`
-  - `Body`
-  - `MessageSid`
-- Resolve the business from the Twilio `To` number.
-- Add development fallback to `DEMO_BUSINESS_ID`.
-- Store inbound messages.
-- Return useful Twilio XML response.
-- Add JSON endpoints:
-
-```text
-GET    /health
-GET    /businesses/:business_id/tickets
-POST   /businesses/:business_id/tickets
-PATCH  /tickets/:ticket_id
-POST   /tickets/:ticket_id/resolve
-GET    /tickets/:ticket_id/messages
-```
-
-Acceptance criteria:
-
-- Incoming SMS with `Body`, `From`, and `To` creates a ticket.
-- Empty SMS returns a helpful response and does not create a blank ticket.
-- Missing business lookup falls back to demo business in development.
-- Logs include Twilio `MessageSid` when present.
-- Tests can simulate Twilio form payloads without calling Twilio.
-- API returns JSON, not HTML.
-
-## Shared Data Contracts
-
-Both teams should agree on these shapes before coding too far.
-
-### Business Profile Shape
-
-Team 1 owns this, Team 2 consumes `business_id` and business phone mapping.
+The profile must include an `industry` field so the dashboard knows which command center to render.
 
 ```json
 {
   "id": "detroit-plumbing-co",
   "name": "Detroit Plumbing Co.",
+  "industry": "home_services",
   "phone": "+13135550100",
   "hours": {
     "mon-fri": "8am-6pm",
@@ -259,11 +111,7 @@ Team 1 owns this, Team 2 consumes `business_id` and business phone mapping.
     "Emergency visit starts at $149",
     "Drain cleaning starts at $99"
   ],
-  "service_area": [
-    "Detroit",
-    "Dearborn",
-    "Southfield"
-  ],
+  "service_area": ["Detroit", "Dearborn", "Southfield"],
   "faqs": [
     {
       "question": "Do you offer emergency services?",
@@ -271,430 +119,481 @@ Team 1 owns this, Team 2 consumes `business_id` and business phone mapping.
     }
   ],
   "routing_rules": {
-    "emergency_keywords": ["flood", "burst pipe", "no heat"],
+    "emergency_keywords": ["flood", "flooding", "burst pipe", "no heat", "no hot water", "gas leak"],
+    "urgent_keywords": ["broken", "not working", "leaking", "backed up"],
     "after_hours_action": "create urgent ticket"
   }
 }
 ```
 
-### Ticket Shape
+Valid `industry` values: `home_services`, `hospitality`, `retail`
 
-Team 2 owns this, Team 1 can use it when AI creates summaries.
+**Tasks:**
+
+- Add `industry` as a required field with validation
+- Create sample profiles:
+  - `demo-plumbing-co` (home_services)
+  - `demo-restaurant` (hospitality)
+  - `demo-boutique` (retail)
+- Update `_build_knowledge_chunks()` to include hours, services, pricing, service area, FAQs, routing rules, and emergency keywords
+- Add clear errors for missing required fields
+
+**Acceptance criteria:**
+
+- `python onboarding/business_setup.py` runs without credentials
+- Missing `name`, `phone`, `hours`, `services`, or `industry` gives a clear error
+- Knowledge chunks cover every important profile field
+- Emergency keywords from `routing_rules` appear in chunks
+
+---
+
+#### Kobby Tasks
+
+Kobby owns AI fallback, urgency detection, and demo reliability.
+
+**Urgency Signal Table**
+
+The AI must classify urgency using this signal priority:
+
+| Signal | Priority |
+|---|---|
+| Emergency keyword match (flood, burst pipe, no heat) | emergency |
+| After-hours contact | urgent |
+| Angry or frustrated sentiment | high |
+| Repeat customer with open issue | elevated |
+| Standard inquiry | medium |
+| General question | low |
+
+**Tasks:**
+
+- Add `WATSONX_ENABLED=false` support in `agent/watsonx.py`
+- Build `classify_urgency(message, routing_rules)` function:
+  - Check emergency keywords → `emergency`
+  - Check urgent keywords → `urgent`
+  - Simple sentiment scan (words like "frustrated", "unacceptable", "furious") → `high`
+  - Default → `medium`
+- Build `classify_ticket_type(message, industry)` function:
+  - Home services: `Emergency Service`, `Appointment Request`, `Quote Request`, `Status Update`
+  - Hospitality: `Reservation`, `Food Order`, `Complaint`, `Catering Inquiry`
+  - Retail: `Product Inquiry`, `Order Request`, `Return Request`, `Complaint`
+- Add prompt builder:
+
+```python
+def build_support_prompt(business_profile, customer_message, context_chunks):
+    ...
+```
+
+- Add `WATSONX_ENABLED=false` fallback that returns a deterministic business-aware response
+- Update `.env.example`:
+
+```
+WATSONX_ENABLED=false
+GEMINI_ENABLED=false
+TWILIO_VALIDATE_SIGNATURES=false
+DEMO_BUSINESS_ID=detroit-plumbing-co
+```
+
+**Acceptance criteria:**
+
+- `"My basement is flooding."` → `urgency: emergency`, `ticket_type: Emergency Service`
+- `"What are your hours?"` → `urgency: low`, `ticket_type: Quote Request`
+- Demo works without IBM credentials
+- Logs show:
+
+```
+[business] profile loaded: detroit-plumbing-co
+[knowledge] chunks created: 12
+[ai] WATSONX_ENABLED=false, using fallback responder
+[urgency] emergency keyword detected: flooding
+[ai] ticket_type: Emergency Service, priority: high
+```
+
+---
+
+### Team 2: Yasrib & Ify
+
+Ownership:
+
+```
+Customer contacts → operational record created → dashboard/API reflects live state
+```
+
+Owned files:
+
+- `ticketing/ticket_router.py`
+- `agent/twilio_handler.py`
+- `db/schema.sql`
+
+---
+
+#### Yasrib Tasks
+
+Yasrib owns database schema and operational record logic.
+
+**Schema**
+
+```sql
+businesses (
+  id              text primary key,
+  name            text not null,
+  industry        text not null,
+  phone           text,
+  hours           jsonb not null default '{}',
+  services        jsonb not null default '[]',
+  routing_rules   jsonb not null default '{}',
+  metadata        jsonb not null default '{}',
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+)
+
+tickets (
+  id                  text primary key,
+  business_id         text not null references businesses(id),
+  customer_phone      text not null,
+  channel             text not null,
+  ticket_type         text not null,
+  issue_summary       text not null,
+  raw_message         text,
+  urgency             text not null,
+  priority            text not null,
+  status              text not null default 'open',
+  suggested_action    text,
+  assigned_to         text,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  resolved_at         timestamptz
+)
+
+messages (
+  id              text primary key,
+  business_id     text not null references businesses(id),
+  ticket_id       text references tickets(id),
+  customer_phone  text,
+  channel         text not null,
+  direction       text not null,
+  body            text not null,
+  created_at      timestamptz not null default now()
+)
+```
+
+`ticket_type` valid values by industry:
+
+| Industry | Types |
+|---|---|
+| home_services | Emergency Service, Appointment Request, Quote Request, Status Update |
+| hospitality | Reservation, Food Order, Complaint, Catering Inquiry |
+| retail | Product Inquiry, Order Request, Return Request, Complaint |
+
+`urgency` values: `emergency`, `urgent`, `high`, `medium`, `low`
+`priority` values: `high`, `medium`, `low`
+`status` values: `open`, `in_progress`, `resolved`
+
+**Tasks:**
+
+- Implement `TicketRouter.create_ticket()`
+- Implement `TicketRouter.list_tickets(business_id, filters={})`
+  - Filters: `status`, `priority`, `urgency`, `ticket_type`, `date_from`
+- Implement `TicketRouter.update_ticket_status(ticket_id, status)`
+- Implement `TicketRouter.resolve_ticket(ticket_id)`
+
+**Acceptance criteria:**
+
+- Ticket row includes `ticket_type`, `urgency`, `priority`, and `suggested_action`
+- `list_tickets` supports filtering by `urgency=emergency` to populate the Emergency Queue
+- Creating without a database logs and does not crash
+
+---
+
+#### Ify Tasks
+
+Ify owns Twilio webhooks and the ticket API.
+
+**SMS Webhook**
+
+Inbound SMS → classify → create operational record → return confirmation to customer.
+
+The response to the customer must be business-aware, not generic.
+
+For an emergency:
+```
+Your emergency request has been received.
+A technician from Detroit Plumbing Co. will contact you shortly.
+```
+
+For a standard inquiry:
+```
+Thanks for reaching out to Detroit Plumbing Co.
+We've noted your request and will follow up during business hours.
+```
+
+**API Routes**
+
+```
+GET    /health
+GET    /businesses/:business_id/tickets
+GET    /businesses/:business_id/tickets?urgency=emergency
+GET    /businesses/:business_id/tickets?ticket_type=Appointment+Request
+POST   /businesses/:business_id/tickets
+PATCH  /tickets/:ticket_id
+POST   /tickets/:ticket_id/resolve
+GET    /tickets/:ticket_id/messages
+```
+
+**Acceptance criteria:**
+
+- `"My basement is flooding."` from SMS creates an `Emergency Service` ticket with `urgency: emergency`
+- `GET /tickets?urgency=emergency` returns only emergency tickets (for Emergency Queue)
+- Empty SMS returns a helpful response and does not create a blank ticket
+- Missing business lookup falls back to `DEMO_BUSINESS_ID` in development
+- All responses are JSON
+
+---
+
+## Shared Data Contract
+
+### Ticket Shape
 
 ```json
 {
   "id": "abc-123",
-  "business_id": "demo-plumbing-co",
+  "business_id": "detroit-plumbing-co",
   "customer_phone": "+13135550101",
   "channel": "sms",
-  "issue_summary": "My furnace is broken and I need help today",
-  "raw_message": "My furnace is broken and I need help today",
-  "priority": "urgent",
+  "ticket_type": "Emergency Service",
+  "issue_summary": "Basement flooding — water leak",
+  "raw_message": "My basement is flooding.",
+  "urgency": "emergency",
+  "priority": "high",
   "status": "open",
+  "suggested_action": "Immediate callback",
   "created_at": "2026-05-15T12:00:00Z"
 }
 ```
 
-### Knowledge Chunk Shape
+---
 
-Team 1 owns this.
+## Sprint 1 — Intake to Record
 
-First version can be strings:
+**Timebox:** 1 day
 
-```python
-[
-    "Detroit Plumbing Co. serves Detroit, Dearborn, and Southfield.",
-    "Emergency visit pricing starts at $149.",
-    "If a customer mentions flood, burst pipe, or no heat, create an urgent ticket.",
-]
-```
+**Goal:** Business onboards. Customer SMS creates a correctly typed, correctly prioritized operational record.
 
-Later version can be structured:
+### Team 1
+- Load and validate business profile with `industry` field
+- Generate knowledge chunks from full profile including routing rules
+- Implement `classify_urgency()` with keyword matching
 
-```python
-{
-    "business_id": "demo-plumbing-co",
-    "kind": "pricing",
-    "text": "Emergency visit pricing starts at $149."
-}
-```
+### Team 2
+- Ship database schema with `ticket_type` and `urgency` columns
+- Implement `create_ticket()` with all required fields
+- Update `/sms` to create a typed ticket
 
-## Database Schema
-
-Team 2 owns implementation. Team 1 should not change schema without talking to Team 2.
-
-```sql
-businesses (
-  id text primary key,
-  name text not null,
-  phone text,
-  hours jsonb not null default '{}',
-  services jsonb not null default '[]',
-  metadata jsonb not null default '{}',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-)
-
-tickets (
-  id text primary key,
-  business_id text not null references businesses(id),
-  customer_phone text not null,
-  channel text not null,
-  issue_summary text not null,
-  raw_message text,
-  priority text not null,
-  status text not null,
-  assigned_operator_id text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  resolved_at timestamptz
-)
-
-messages (
-  id text primary key,
-  business_id text not null references businesses(id),
-  ticket_id text references tickets(id),
-  customer_phone text,
-  channel text not null,
-  direction text not null,
-  body text not null,
-  created_at timestamptz not null default now()
-)
-```
-
-## Sprint 1: Signup to Ticket
-
-Timebox: 1 day
-
-Goal: a business can be onboarded and a simulated SMS can create a ticket.
-
-### Team 1 Tasks
-
-- Create sample business profile JSON.
-- Validate and load the profile.
-- Generate knowledge chunks.
-- Save business profile if database is available.
-- Print clear logs for profile and knowledge creation.
-
-### Team 2 Tasks
-
-- Add database schema.
-- Implement ticket creation.
-- Update `/sms` to create a ticket.
-- Add ticket listing endpoint.
-- Print clear logs for inbound SMS and ticket creation.
-
-Sprint 1 demo:
+### Sprint 1 Demo
 
 ```bash
 python onboarding/business_setup.py
+
 curl -X POST http://localhost:5000/sms \
   -d "From=+13135550101" \
   -d "To=+13135550100" \
-  -d "Body=My furnace is broken and I need help today"
-curl http://localhost:5000/businesses/demo-plumbing-co/tickets
+  -d "Body=My basement is flooding."
+
+curl http://localhost:5000/businesses/detroit-plumbing-co/tickets
 ```
 
-Expected result:
+Expected:
 
-- Business profile loads.
-- Knowledge chunks are created.
-- SMS creates an urgent or high ticket.
-- API returns the ticket.
-
-## Sprint 2: Business-Aware AI Response
-
-Timebox: 1 day
-
-Goal: Dspatch can answer using the business profile instead of generic text.
-
-### Team 1 Tasks
-
-- Add fallback AI responder.
-- Add support prompt builder.
-- Add simple keyword retrieval from knowledge chunks.
-- Return a business-aware response.
-
-### Team 2 Tasks
-
-- Store inbound and outbound messages.
-- Update `/sms` to call Team 1's responder interface when available.
-- Link messages to tickets.
-
-Sprint 2 demo:
-
-Customer message:
-
-```text
-Do you serve Southfield and what does emergency service cost?
+```json
+{
+  "ticket_type": "Emergency Service",
+  "issue_summary": "Basement flooding — water leak",
+  "urgency": "emergency",
+  "priority": "high",
+  "status": "open",
+  "suggested_action": "Immediate callback"
+}
 ```
 
-Expected Dspatch response:
+---
 
-```text
-Yes, Detroit Plumbing Co. serves Southfield. Emergency visits start at $149. I can create a request for the team now.
-```
+## Sprint 2 — Business-Aware AI Response
 
-## Sprint 3: Dashboard API and Operator Review
+**Timebox:** 1 day
 
-Timebox: 1 day
+**Goal:** DSPatch answers using business context, not generic text.
 
-Goal: a Dspatch operator can inspect businesses, tickets, and messages.
+### Team 1
+- Implement fallback AI responder using knowledge chunks
+- Build `build_support_prompt()` with business context
+- Simple keyword retrieval from chunks
 
-### Team 1 Tasks
+### Team 2
+- Store inbound and outbound messages
+- Link messages to tickets
+- Call Team 1's responder interface from `/sms`
 
-- Add business profile read/update functions.
-- Support changes to FAQs, pricing, routing rules, and service area.
-- Regenerate knowledge chunks after profile updates.
+### Sprint 2 Demo
 
-### Team 2 Tasks
+Customer: `"Do you serve Southfield and what does emergency service cost?"`
 
-- Add ticket filters:
-  - status
-  - priority
-  - business
-  - date
-- Add message history endpoint:
+Expected: `"Yes, Detroit Plumbing Co. serves Southfield. Emergency visits start at $149. I can log a request for the team now."`
 
-```text
-GET /tickets/:ticket_id/messages
-```
+---
 
-- Add ticket update endpoint:
+## Sprint 3 — Dashboard API and Command Center
 
-```text
-PATCH /tickets/:ticket_id
-```
+**Timebox:** 1 day
 
-Operator review flow:
+**Goal:** The dashboard API reflects the live state of the command center, filtered by industry and urgency.
 
-1. Operator opens dashboard/API.
-2. Operator sees open tickets.
-3. Operator opens a ticket.
-4. Operator sees inbound/outbound messages.
-5. Operator updates priority or status.
-6. Operator updates profile knowledge if AI missed something.
+### Team 1
+- Support profile updates (FAQs, pricing, routing rules)
+- Regenerate knowledge chunks after update
 
-## Sprint 4: Voice Path
+### Team 2
+- Add `urgency` and `ticket_type` filters to ticket list endpoint
+- Add message history endpoint
+- Add ticket update endpoint
 
-Timebox: 1 to 2 days
+Dashboard queries the backend needs to support:
 
-Goal: incoming voice call creates a useful ticket.
+| Dashboard Module | API Query |
+|---|---|
+| Emergency Queue | `GET /tickets?urgency=emergency&status=open` |
+| Appointment Requests | `GET /tickets?ticket_type=Appointment+Request` |
+| All Open | `GET /tickets?status=open` |
+| Resolved today | `GET /tickets?status=resolved&date_from=today` |
 
-This is the riskiest sprint. Keep SMS as the guaranteed demo path.
+---
 
-### Team 1 Tasks
+## Sprint 4 — Voice Path
 
-- Build transcript-to-summary function.
-- Extract:
-  - issue summary
-  - urgency
-  - requested service
-  - callback number
-  - preferred time
-- Use business profile context to classify the call.
+**Timebox:** 1–2 days
 
-### Team 2 Tasks
+**This is the riskiest sprint. SMS is the guaranteed demo path. Do not skip SMS to chase voice.**
 
-- Improve `/voice` TwiML.
-- Add call logging.
-- Store `CallSid`, `From`, and `To`.
+### Team 1
+- Build `transcript_to_record(transcript, business_profile)`:
+  - Extract issue summary, urgency, ticket type, callback number
+  - Use business routing rules to classify
+
+### Team 2
+- Add `/voice` TwiML handler
+- Add call logging
 - Add `calls` table:
 
 ```sql
 calls (
-  id text primary key,
-  business_id text not null references businesses(id),
-  customer_phone text,
-  twilio_call_sid text,
-  transcript text,
-  summary text,
-  ticket_id text references tickets(id),
-  created_at timestamptz not null default now()
+  id                text primary key,
+  business_id       text not null references businesses(id),
+  customer_phone    text,
+  twilio_call_sid   text,
+  transcript        text,
+  summary           text,
+  urgency           text,
+  ticket_id         text references tickets(id),
+  created_at        timestamptz not null default now()
 )
 ```
 
-### Kobby Integration Task
+### Kobby — Demo Reliability Call
 
-Kobby owns the final call on demo reliability:
+Kobby decides the final demo path:
 
-- If real-time voice is stable, demo voice.
-- If not, demo SMS and simulated transcript-to-ticket.
-- Keep fallback mode working.
+- If real-time voice is stable → demo voice
+- If not → demo SMS + simulated transcript-to-ticket, which is still compelling
 
-Voice fallback demo:
-
-1. Twilio call hits `/voice`.
-2. Dspatch returns a message saying it received the call.
-3. Call metadata is stored.
-4. A simulated transcript creates the ticket.
+---
 
 ## Coding Guidelines
 
-### Keep Functions Small
+### One function, one job
 
-Each function should do one thing:
+- Parse input
+- Validate input
+- Classify urgency
+- Create record
+- Generate response
 
-- Parse input.
-- Validate input.
-- Save data.
-- Classify priority.
-- Generate response.
+Never in the same function.
 
-Avoid functions that parse, classify, save, and respond all at once.
+### Log every boundary
 
-### Use Clear Return Shapes
-
-Prefer dictionaries that are easy for the dashboard to consume:
-
-```python
-{
-    "id": ticket.id,
-    "business_id": ticket.business_id,
-    "customer_phone": ticket.customer_phone,
-    "issue_summary": ticket.issue_summary,
-    "priority": ticket.priority,
-    "status": ticket.status,
-    "created_at": ticket.created_at.isoformat(),
-}
+```
+[sms]       inbound message received
+[urgency]   emergency keyword detected: flooding
+[ticket]    Emergency Service ticket created: abc-123
+[business]  profile loaded: detroit-plumbing-co
+[knowledge] chunks created: 12
+[ai]        WATSONX_ENABLED=false, using fallback responder
+[db]        failed to save ticket: connection refused
 ```
 
-### Log Every Boundary
+### Every external API has a fallback
 
-Log when data crosses a system boundary:
-
-- HTTP request received.
-- Twilio webhook parsed.
-- Ticket created.
-- Business profile saved.
-- AI response generated.
-- Database write failed.
-
-Use consistent prefixes:
-
-```text
-[sms]
-[voice]
-[ticket]
-[business]
-[knowledge]
-[ai]
-[db]
 ```
-
-### External APIs Must Have Fallbacks
-
-Gemini, watsonx, and Twilio should never block local development.
-
-Use flags:
-
-```text
 WATSONX_ENABLED=false
 GEMINI_ENABLED=false
 TWILIO_VALIDATE_SIGNATURES=false
 ```
 
-When disabled:
-
-- Watsonx returns a deterministic fake response.
-- Gemini voice path can be skipped.
-- Twilio validation is not required locally.
-
-### No Silent Failures
-
-Do not write this:
+### No silent failures
 
 ```python
+# Never
 except Exception:
     pass
-```
 
-Write this:
-
-```python
+# Always
 except Exception as exc:
     print(f"[db] failed to save ticket: {exc}")
     raise
 ```
 
-For demo fallback paths, log clearly:
-
-```python
-print("[ai] WATSONX_ENABLED=false, using fallback responder")
-```
+---
 
 ## Testing Priority
 
-Highest priority tests:
+1. `classify_urgency("My basement is flooding.")` → `emergency`
+2. `classify_ticket_type("basement is flooding", "home_services")` → `Emergency Service`
+3. Business profile validation — missing `industry` gives a clear error
+4. SMS webhook creates a ticket with `ticket_type` and `urgency`
+5. `GET /tickets?urgency=emergency` returns only emergency tickets
+6. Missing env vars do not crash local fallback mode
 
-1. Business profile validation.
-2. Knowledge chunk generation.
-3. Ticket priority classification.
-4. SMS webhook creates ticket.
-5. Missing env vars do not crash local fallback mode.
-6. API returns expected JSON shape.
+---
 
-Lower priority tests:
+## Definition of Done
 
-- Real Twilio signature validation.
-- Real Gemini streaming.
-- Real watsonx generation.
-- pgvector similarity quality.
-
-## End-to-End Definition of Done
-
-The backend is demo-ready when this works:
-
-1. Start services:
+The platform is demo-ready when this full path works:
 
 ```bash
+# 1. Start
 docker compose up
-```
 
-2. Onboard a business:
-
-```bash
+# 2. Onboard
 python onboarding/business_setup.py
-```
 
-3. Simulate customer SMS:
-
-```bash
+# 3. Emergency SMS
 curl -X POST http://localhost:5000/sms \
   -d "From=+13135550101" \
   -d "To=+13135550100" \
-  -d "Body=My furnace is broken and I need help today"
+  -d "Body=My basement is flooding."
+
+# 4. Check emergency queue
+curl "http://localhost:5000/businesses/detroit-plumbing-co/tickets?urgency=emergency"
+
+# 5. Business-aware question
+curl -X POST http://localhost:5000/sms \
+  -d "From=+13135550102" \
+  -d "To=+13135550100" \
+  -d "Body=Do you serve Southfield and what does emergency service cost?"
 ```
 
-4. Read tickets:
+Expected results:
 
-```bash
-curl http://localhost:5000/businesses/demo-plumbing-co/tickets
-```
+- Emergency SMS → `ticket_type: Emergency Service`, `urgency: emergency`, `priority: high`
+- Emergency queue endpoint → returns that ticket
+- Business question → `"Yes, Detroit Plumbing Co. serves Southfield. Emergency visits start at $149."`
 
-5. Expected ticket:
-
-```json
-{
-  "business_id": "demo-plumbing-co",
-  "customer_phone": "+13135550101",
-  "channel": "sms",
-  "issue_summary": "My furnace is broken and I need help today",
-  "priority": "urgent",
-  "status": "open"
-}
-```
-
-6. Ask a business-aware question:
-
-```text
-Do you serve Southfield and what does emergency service cost?
-```
-
-7. Expected AI answer:
-
-```text
-Yes, Detroit Plumbing Co. serves Southfield. Emergency visits start at $149.
-```
-
-If this path works, Dspatch has a credible SMB signup-to-support-system demo.
+That is a credible platform demo: live intake, urgency detection, typed operational records, business-aware AI, and a filterable command center API.

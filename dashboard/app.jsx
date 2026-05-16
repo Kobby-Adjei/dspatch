@@ -1,59 +1,56 @@
 const splineUrl = 'https://my.spline.design/webdiagram-78ofgCvL78UwRylv2OO3z6iN/';
 
-const HEADLINE = 'Enterprise customer support. Half the cost. Set up in minutes.';
+const HEADLINE = 'Never lose a customer because nobody answered.';
 
-const problemPoints = [
+const problems = [
+  { title: 'Missed calls',        detail: 'Every unanswered call is a job that went to your competitor.' },
+  { title: 'Buried requests',     detail: 'Texts, emails, voicemails — scattered with no system to catch them.' },
+  { title: 'No urgency filter',   detail: 'A flooded basement and an hours inquiry look the same in your inbox.' },
+];
+
+const howSteps = [
   {
-    title: 'Missed calls',
-    detail: "Every unanswered call is a customer who called your competitor next.",
+    step: '01',
+    title: 'AI answers immediately',
+    detail: 'Every call, text, and message gets a response — 24/7. No missed windows.',
   },
   {
-    title: 'Tickets falling through',
-    detail: "Emails get buried. Issues get forgotten. Customers leave reviews you didn't deserve.",
+    step: '02',
+    title: 'Collects and classifies',
+    detail: 'AI extracts structured info, detects urgency, and creates an operational record.',
   },
   {
-    title: "Tools you can't afford",
-    detail: "Zendesk is $55/seat. Salesforce is $150/seat. None of them were built for your size.",
+    step: '03',
+    title: 'Your dashboard updates live',
+    detail: 'Emergency queue, appointments, orders — your command center reflects reality in real time.',
   },
 ];
 
-const solutionSteps = [
+const industries = [
   {
-    step: 'Step 01',
-    title: 'Tell us about your business',
-    detail: 'Your hours, services, FAQs. 10 minutes. No technical knowledge needed.',
+    name: 'Home Services',
+    sub: 'Plumbing · HVAC · Electrical · Auto Repair',
+    modules: ['Emergency Queue', 'Appointment Requests', 'Customer Timeline', 'Revenue Recovery'],
+    feel: 'AI-powered dispatch center',
   },
   {
-    step: 'Step 02',
-    title: 'AI handles your customers',
-    detail: 'Answers calls, responds to messages, creates tickets, routes issues. 24/7.',
+    name: 'Hospitality & Food',
+    sub: 'Restaurants · Cafes · Bakeries',
+    modules: ['Reservations Queue', 'Active Orders', 'Complaint Resolution', 'Peak Demand Analytics'],
+    feel: 'AI front desk + order management',
   },
   {
-    step: 'Step 03',
-    title: 'A real person has your back',
-    detail: 'A Dspatch-trained grad manages your system and catches what AI misses.',
-  },
-];
-
-const gradBenefits = [
-  {
-    title: 'Real experience',
-    detail: 'Manage live AI systems for real businesses. Goes on your resume and means something.',
-  },
-  {
-    title: 'Flexible work',
-    detail: 'Remote, set your hours, manage multiple clients. Built for people building a career.',
-  },
-  {
-    title: 'Built-in network',
-    detail: 'Join a growing community of Dspatch operators across Michigan and beyond.',
+    name: 'Retail',
+    sub: 'Local Shops · Boutiques · Beauty Supply',
+    modules: ['Orders Queue', 'Product Demand Insights', 'Returns & Exchanges', 'Sales Opportunity Alerts'],
+    feel: 'AI-powered retail operations center',
   },
 ];
 
 const stats = [
-  { raw: 900000, prefix: '', suffix: '+', label: 'small businesses in Michigan' },
-  { raw: 0,      prefix: '$', suffix: '', label: 'to get started'              },
-  { raw: 10,     prefix: '', suffix: ' mins', label: 'average setup time'      },
+  { raw: 900000, prefix: '', suffix: '+', label: 'small businesses in Michigan'  },
+  { raw: 0,      prefix: '$', suffix: '', label: 'to get started'                },
+  { raw: 10,     prefix: '', suffix: ' mins', label: 'average setup time'        },
 ];
 
 /* ── Typewriter ── */
@@ -62,8 +59,7 @@ function Typewriter({ text, speed = 28, delay = 300, onDone }) {
   const [done, setDone] = React.useState(false);
 
   React.useEffect(() => {
-    let i = 0;
-    let intervalId;
+    let i = 0, intervalId;
     const timeoutId = setTimeout(() => {
       intervalId = setInterval(() => {
         i++;
@@ -114,7 +110,6 @@ function CountUp({ raw, prefix = '', suffix = '', label }) {
   }, [raw]);
 
   const display = prefix + (count >= 1000 ? count.toLocaleString() : count) + suffix;
-
   return (
     <article className="stat-card reveal" ref={ref}>
       <strong>{display}</strong>
@@ -128,17 +123,14 @@ function useScrollReveal() {
   React.useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => entries.forEach((e) => {
-        if (e.isIntersecting) {
-          e.target.classList.add('visible');
-          observer.unobserve(e.target);
-        }
+        if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); }
       }),
-      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
     );
-    const timeout = setTimeout(() => {
+    const tid = setTimeout(() => {
       document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
     }, 100);
-    return () => { clearTimeout(timeout); observer.disconnect(); };
+    return () => { clearTimeout(tid); observer.disconnect(); };
   }, []);
 }
 
@@ -156,53 +148,31 @@ function WaitlistForm({ audience, onClose }) {
   return (
     <form className="waitlist-form" onSubmit={handleSubmit}>
       <div className="form-topline">
-        <label htmlFor={`waitlist-email-${audience}`}>Email</label>
-        <button type="button" onClick={onClose} aria-label="Close">Close</button>
+        <label htmlFor={`waitlist-${audience}`}>Email</label>
+        <button type="button" onClick={onClose}>Close</button>
       </div>
       <div className="waitlist-row">
         <input
-          id={`waitlist-email-${audience}`}
+          id={`waitlist-${audience}`}
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@company.com"
           required
         />
-        <button type="submit">Claim your spot</button>
+        <button type="submit">Reserve my spot</button>
       </div>
       <p className="form-note">
-        {submitted
-          ? 'You are on the list.'
-          : audience === 'business'
-          ? 'Business early access waitlist.'
-          : 'Dspatch operator network waitlist.'}
+        {submitted ? 'You are on the list.' : audience === 'business' ? 'Business early access waitlist.' : 'Operator network waitlist.'}
       </p>
     </form>
-  );
-}
-
-/* ── Audience CTAs ── */
-function AudienceCtas({ activeForm, setActiveForm, compact = false }) {
-  return (
-    <div className={compact ? 'cta-stack compact' : 'cta-stack'}>
-      <div className="cta-row">
-        <button className="primary-action" type="button" onClick={() => setActiveForm('business')}>
-          I'm a Business — Get Early Access
-        </button>
-        <button className="secondary-action" type="button" onClick={() => setActiveForm('grad')}>
-          I'm a Recent Grad — Join the Network
-        </button>
-      </div>
-      {activeForm && <WaitlistForm audience={activeForm} onClose={() => setActiveForm(null)} />}
-    </div>
   );
 }
 
 /* ── App ── */
 function App() {
   const [heroReady, setHeroReady] = React.useState(false);
-  const [activeForm, setActiveForm] = React.useState(null);
-  const [gradForm, setGradForm] = React.useState(false);
+  const [heroForm, setHeroForm]   = React.useState(null);
   const [finalForm, setFinalForm] = React.useState(null);
 
   useScrollReveal();
@@ -210,11 +180,11 @@ function App() {
   return (
     <main className="site-shell">
 
-      {/* HERO */}
+      {/* ── HERO ── */}
       <section className="hero-section" aria-labelledby="hero-title">
         <iframe
           className="spline-background"
-          title="Dspatch AI support system background"
+          title="Dspatch AI operations background"
           src={splineUrl}
           loading="eager"
           allow="autoplay; fullscreen; xr-spatial-tracking"
@@ -227,119 +197,172 @@ function App() {
             <span>Dspatch</span>
           </a>
           <div className="nav-links">
-            <a href="#businesses">Businesses</a>
-            <a href="#graduates">Graduates</a>
-            <a href="#waitlist">Waitlist</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#industries">Industries</a>
+            <a href="#waitlist">Get access</a>
           </div>
         </nav>
 
         <div className="hero-content" id="top">
           <div className="hero-copy-left">
-            <p className="eyebrow anim-fade-in">AI-powered support for small teams</p>
+            <p className="eyebrow anim-fade-in">AI-powered customer operations</p>
             <h1 id="hero-title">
               <Typewriter text={HEADLINE} onDone={() => setHeroReady(true)} />
             </h1>
           </div>
           <div className={`hero-copy-right${heroReady ? ' ready' : ''}`}>
             <p className="hero-lede">
-              Dspatch gives small businesses a full AI-powered support system —
-              calls answered, tickets routed, customers never lost.
+              DSPatch is the AI operations layer that intakes every customer request,
+              detects urgency, and updates your command center — before you pick up the phone.
             </p>
-            <AudienceCtas activeForm={activeForm} setActiveForm={setActiveForm} />
-            <p className="small-proof">Free to start. No credit card. Built in Michigan.</p>
+            <div className="cta-stack">
+              <div className="cta-row">
+                <button className="primary-action" type="button" onClick={() => setHeroForm('business')}>
+                  Get Early Access
+                </button>
+                <a className="secondary-action" href="#demo">
+                  See it in action
+                </a>
+              </div>
+              {heroForm && <WaitlistForm audience={heroForm} onClose={() => setHeroForm(null)} />}
+            </div>
+            <p className="small-proof">Free to start · No credit card · Built in Michigan</p>
           </div>
         </div>
       </section>
 
-      {/* PROBLEM */}
-      <section className="flat-section" id="businesses" aria-labelledby="problem-title">
+      {/* ── POSITIONING ── */}
+      <section className="positioning-section" aria-label="What DSPatch is">
+        <div className="flat-section">
+          <div className="not-list reveal">
+            <span>Not a chatbot.</span>
+            <span>Not a helpdesk.</span>
+            <span>Not an AI receptionist.</span>
+          </div>
+          <p className="is-statement reveal d2">
+            An AI-powered customer operations layer — intake, classify, dispatch.
+          </p>
+        </div>
+      </section>
+
+      {/* ── PROBLEM ── */}
+      <section className="flat-section problem-section" aria-labelledby="problem-title">
         <div className="section-heading reveal fade-left">
-          <p className="eyebrow dark">For small businesses &amp; startups</p>
-          <h2 id="problem-title">You're losing customers you don't even know about.</h2>
+          <p className="eyebrow dark">The problem</p>
+          <h2 id="problem-title">You're losing revenue you can't even see.</h2>
         </div>
         <div className="three-grid">
-          {problemPoints.map((point, i) => (
-            <article className={`flat-card reveal d${i + 1}`} key={point.title}>
-              <h3>{point.title}</h3>
-              <p>{point.detail}</p>
+          {problems.map((p, i) => (
+            <article className={`flat-card reveal d${i + 1}`} key={p.title}>
+              <h3>{p.title}</h3>
+              <p>{p.detail}</p>
             </article>
           ))}
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
-      <section className="flat-section solution-section" aria-labelledby="solution-title">
+      {/* ── HOW IT WORKS ── */}
+      <section className="flat-section solution-section" id="how-it-works" aria-labelledby="how-title">
         <div className="section-heading reveal fade-left">
-          <p className="eyebrow dark">How Dspatch works</p>
-          <h2 id="solution-title">Set up in minutes. Running forever.</h2>
+          <p className="eyebrow dark">How it works</p>
+          <h2 id="how-title">Intake. Classify. Dispatch.</h2>
         </div>
         <div className="step-grid">
-          {solutionSteps.map((item, i) => (
-            <article className={`step-card reveal d${i + 1}`} key={item.title}>
+          {howSteps.map((item, i) => (
+            <article className={`step-card reveal d${i + 1}`} key={item.step}>
               <span>{item.step}</span>
               <h3>{item.title}</h3>
               <p>{item.detail}</p>
             </article>
           ))}
         </div>
-        <aside className="pricing-callout reveal d2">
-          Starting at $29/month vs $150+/month for enterprise tools. That's it.
-        </aside>
       </section>
 
-      {/* GRADUATES */}
-      <section className="flat-section grad-section" id="graduates" aria-labelledby="grad-title">
+      {/* ── DEMO MOMENT ── */}
+      <section className="flat-section demo-section" id="demo" aria-labelledby="demo-title">
         <div className="section-heading reveal fade-left">
-          <p className="eyebrow dark">For recent graduates</p>
-          <h2 id="grad-title">Turn your AI skills into real income.</h2>
-          <p>
-            Dspatch trains recent grads to manage AI-powered support systems for local
-            businesses. Flexible paid work. A human in the loop.
-          </p>
+          <p className="eyebrow dark">Live example</p>
+          <h2 id="demo-title">From customer message to action — in seconds.</h2>
         </div>
-        <div className="three-grid">
-          {gradBenefits.map((benefit, i) => (
-            <article className={`flat-card reveal d${i + 1}`} key={benefit.title}>
-              <h3>{benefit.title}</h3>
-              <p>{benefit.detail}</p>
+        <div className="demo-grid reveal d1">
+          <div className="demo-card sms-card">
+            <p className="demo-label">Customer texts</p>
+            <p className="sms-text">"My basement is flooding."</p>
+          </div>
+          <div className="demo-arrow" aria-hidden="true">→</div>
+          <div className="demo-card ai-card">
+            <p className="demo-label">DSPatch AI extracts</p>
+            <div className="ai-fields">
+              <div className="ai-field"><span>Issue type</span><strong>Water leak</strong></div>
+              <div className="ai-field"><span>Urgency</span><strong className="urgent">Emergency</strong></div>
+              <div className="ai-field"><span>Action</span><strong>Immediate callback</strong></div>
+            </div>
+          </div>
+          <div className="demo-arrow" aria-hidden="true">→</div>
+          <div className="demo-card ticket-card">
+            <p className="demo-label">Dashboard updates</p>
+            <div className="ticket-badge">EMERGENCY</div>
+            <p className="ticket-title">Water Leak — 123 Main St</p>
+            <p className="ticket-sub">Assigned · Callback requested · 2 sec ago</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── INDUSTRIES ── */}
+      <section className="flat-section industries-section" id="industries" aria-labelledby="industries-title">
+        <div className="section-heading reveal fade-left">
+          <p className="eyebrow dark">Built for your industry</p>
+          <h2 id="industries-title">The dashboard changes. The result doesn't.</h2>
+          <p>DSPatch is not generic software. Your command center is built for your business type.</p>
+        </div>
+        <div className="industry-grid">
+          {industries.map((ind, i) => (
+            <article className={`industry-card reveal d${i + 1}`} key={ind.name}>
+              <div className="industry-header">
+                <h3>{ind.name}</h3>
+                <p className="industry-sub">{ind.sub}</p>
+              </div>
+              <ul className="industry-modules">
+                {ind.modules.map((mod) => (
+                  <li key={mod}>{mod}</li>
+                ))}
+              </ul>
+              <p className="industry-feel">Feels like: <em>{ind.feel}</em></p>
             </article>
           ))}
         </div>
-        <button className="primary-action dark-button reveal d2" type="button" onClick={() => setGradForm(true)}>
-          Apply to Become a Dspatch Operator
-        </button>
-        {gradForm && <WaitlistForm audience="grad" onClose={() => setGradForm(false)} />}
       </section>
 
-      {/* PROOF */}
+      {/* ── STATS ── */}
       <section className="flat-section proof-section" aria-labelledby="proof-title">
         <div className="section-heading centered reveal">
           <h2 id="proof-title">Built for Michigan. Ready for everywhere.</h2>
-          <p>
-            Started at HackMichigan 2026. One mission — enterprise-grade support
-            for every small business, real opportunity for the next generation.
-          </p>
+          <p>Started at HackMichigan 2026. One mission — make operations-grade AI accessible to every small business.</p>
         </div>
         <div className="stat-grid">
-          {stats.map((stat) => (
-            <CountUp key={stat.label} {...stat} />
-          ))}
+          {stats.map((s) => <CountUp key={s.label} {...s} />)}
         </div>
       </section>
 
-      {/* FINAL CTA */}
+      {/* ── FINAL CTA ── */}
       <section className="final-cta reveal" id="waitlist" aria-labelledby="final-title">
-        <div>
-          <h2 id="final-title">Ready to stop missing customers?</h2>
-          <p>Join the waitlist. Be first when we launch.</p>
+        <h2 id="final-title">Stop losing customers to a missed call.</h2>
+        <p>Join the waitlist. Be first when we launch.</p>
+        <div className="cta-stack compact">
+          <div className="cta-row">
+            <button className="primary-action" type="button" onClick={() => setFinalForm('business')}>
+              I'm a Business — Get Early Access
+            </button>
+            <button className="secondary-action" type="button" onClick={() => setFinalForm('grad')}>
+              I'm a Recent Grad — Join the Network
+            </button>
+          </div>
+          {finalForm && <WaitlistForm audience={finalForm} onClose={() => setFinalForm(null)} />}
         </div>
-        <AudienceCtas activeForm={finalForm} setActiveForm={setFinalForm} compact />
-        <p className="small-proof">
-          Free to start · No credit card · Built at HackMichigan 2026 · Powered by IBM watsonx &amp; Google
-        </p>
+        <p className="small-proof">Free to start · No credit card · Built at HackMichigan 2026 · Powered by IBM watsonx &amp; Google</p>
       </section>
 
-      {/* FOOTER */}
+      {/* ── FOOTER ── */}
       <footer className="footer">
         <p>Dspatch · Built in Michigan · HackMichigan 2026</p>
         <p>Powered by IBM watsonx · Google Gemini · Twilio</p>
