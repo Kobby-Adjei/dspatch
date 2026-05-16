@@ -1,16 +1,13 @@
-# ticketing/ticket_router.py
-# Operational record creation and routing logic.
-
 import os
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, date, datetime, time
-from typing import Dict, Optional
+from datetime import date, datetime, time, timezone
+from typing import Optional
 
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
-except ImportError:  # pragma: no cover - local demo mode should not need DB deps
+except ImportError:
     psycopg2 = None
     RealDictCursor = None
 
@@ -26,14 +23,14 @@ VALID_STATUSES = {"open", "in_progress", "resolved"}
 FILTER_FIELDS = {"status", "priority", "urgency", "ticket_type", "date_from"}
 
 
-def utc_now() -> datetime:
-    return datetime.now(UTC)
+def utc_now():
+    return datetime.now(timezone.utc)
 
 
 def format_datetime(value: datetime) -> str:
     if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -41,20 +38,20 @@ class Ticket:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     business_id: str = ""
     customer_phone: str = ""
-    channel: str = "sms"
+    channel: str = "api"
     ticket_type: str = ""
     issue_summary: str = ""
-    raw_message: Optional[str] = None
+    raw_message: str = ""
     urgency: str = "medium"
     priority: str = "medium"
     status: str = "open"
-    suggested_action: Optional[str] = None
+    suggested_action: str = ""
     assigned_to: Optional[str] = None
     created_at: datetime = field(default_factory=utc_now)
     updated_at: datetime = field(default_factory=utc_now)
     resolved_at: Optional[datetime] = None
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         data = asdict(self)
         for key in ("created_at", "updated_at", "resolved_at"):
             if data[key] is not None:
@@ -65,20 +62,37 @@ class Ticket:
 class TicketRouter:
     """Creates, lists, and updates typed operational records."""
 
+    URGENCY_TO_PRIORITY = {
+        "emergency": "high",
+        "urgent": "high",
+        "high": "high",
+        "medium": "medium",
+        "low": "low",
+    }
+
+    SUGGESTED_ACTIONS = {
+        "emergency": "Immediate callback",
+        "urgent": "Call back within 1 hour",
+        "high": "Call back today",
+        "medium": "Follow up within 24 hours",
+        "low": "Respond during business hours",
+    }
+
     def __init__(self):
         self.db_url = os.getenv("DATABASE_URL")
         self._memory_tickets = []
+        self._memory_messages = {}
 
     def create_ticket(
         self,
         business_id: str,
         customer_phone: str,
-        channel: str,
-        ticket_type: str,
         issue_summary: str,
-        urgency: str,
-        priority: str,
-        raw_message: Optional[str] = None,
+        ticket_type: str = "General Inquiry",
+        urgency: str = "medium",
+        raw_message: str = "",
+        channel: str = "api",
+        priority: Optional[str] = None,
         suggested_action: Optional[str] = None,
         assigned_to: Optional[str] = None,
         industry: Optional[str] = None,
@@ -91,10 +105,12 @@ class TicketRouter:
             "ticket_type": ticket_type,
             "issue_summary": issue_summary,
             "urgency": urgency,
-            "priority": priority,
         })
         self._validate_choice("urgency", urgency, VALID_URGENCIES)
+
+        priority = priority or self.URGENCY_TO_PRIORITY.get(urgency, self.classify_priority(issue_summary))
         self._validate_choice("priority", priority, VALID_PRIORITIES)
+
         industry = industry or self._load_business_industry(business_id)
         if industry:
             self._validate_ticket_type(industry, ticket_type)
@@ -108,22 +124,35 @@ class TicketRouter:
             raw_message=raw_message,
             urgency=urgency,
             priority=priority,
-            suggested_action=suggested_action,
+            suggested_action=suggested_action or self.SUGGESTED_ACTIONS.get(urgency, "Follow up"),
             assigned_to=assigned_to,
         )
         self._save_ticket(ticket)
         return ticket
 
-    def list_tickets(self, business_id: str, filters: Optional[Dict] = None):
-        """List tickets for a business with optional status, priority, urgency, type, and date filters."""
+    def classify_priority(self, text: str) -> str:
+        text_lower = text.lower()
+        if any(word in text_lower for word in ["emergency", "fire", "flood", "critical", "asap", "immediately"]):
+            return "high"
+        if any(word in text_lower for word in ["when you can", "no rush", "whenever"]):
+            return "low"
+        return "medium"
+
+    def list_tickets(self, business_id: Optional[str] = None, filters: Optional[dict] = None) -> list[dict]:
         filters = self._clean_filters(filters or {})
 
         if not self._db_available():
-            tickets = [ticket for ticket in self._memory_tickets if ticket.business_id == business_id]
-            return [ticket.to_dict() for ticket in tickets if self._matches_filters(ticket, filters)]
+            tickets = self._memory_tickets
+            if business_id:
+                tickets = [ticket for ticket in tickets if ticket.business_id == business_id]
+            filtered = [ticket.to_dict() for ticket in tickets if self._matches_filters(ticket, filters)]
+            return sorted(filtered, key=lambda ticket: ticket["created_at"], reverse=True)
 
-        clauses = ["business_id = %s"]
-        params = [business_id]
+        clauses = []
+        params = []
+        if business_id:
+            clauses.append("business_id = %s")
+            params.append(business_id)
         for key, value in filters.items():
             if key == "date_from":
                 clauses.append("created_at >= %s")
@@ -131,88 +160,124 @@ class TicketRouter:
                 clauses.append(f"{key} = %s")
             params.append(value)
 
-        sql = f"select * from tickets where {' and '.join(clauses)} order by created_at desc"
+        sql = "select * from tickets"
+        if clauses:
+            sql += " where " + " and ".join(clauses)
+        sql += " order by created_at desc"
+
+        conn = None
+        cur = None
         try:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor(cursor_factory=RealDictCursor)
             cur.execute(sql, params)
-            rows = cur.fetchall()
-            cur.close()
-            conn.close()
-            return [self._serialize_row(row) for row in rows]
+            return [self._serialize_row(row) for row in cur.fetchall()]
         except Exception as exc:
             print(f"[db] failed to list tickets: {exc}")
-            tickets = [ticket for ticket in self._memory_tickets if ticket.business_id == business_id]
+            tickets = self._memory_tickets
+            if business_id:
+                tickets = [ticket for ticket in tickets if ticket.business_id == business_id]
             return [ticket.to_dict() for ticket in tickets if self._matches_filters(ticket, filters)]
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
 
-    def update_ticket_status(self, ticket_id: str, status: str):
-        """Move a ticket to open, in_progress, or resolved."""
-        self._validate_choice("status", status, VALID_STATUSES)
+    def update_ticket(self, ticket_id: str, updates: dict) -> Optional[dict]:
+        allowed = {"status", "priority", "assigned_to"}
+        clean_updates = {key: value for key, value in updates.items() if key in allowed}
+        if not clean_updates:
+            return self.get_ticket(ticket_id)
 
-        if status == "resolved":
-            return self.resolve_ticket(ticket_id)
+        if "status" in clean_updates:
+            self._validate_choice("status", clean_updates["status"], VALID_STATUSES)
+        if "priority" in clean_updates:
+            self._validate_choice("priority", clean_updates["priority"], VALID_PRIORITIES)
+
+        if clean_updates.get("status") == "resolved":
+            return self.resolve_ticket(ticket_id, extra_updates=clean_updates)
 
         if not self._db_available():
             ticket = self._find_memory_ticket(ticket_id)
             if not ticket:
                 return None
-            ticket.status = status
+            for key, value in clean_updates.items():
+                setattr(ticket, key, value)
             ticket.updated_at = utc_now()
             return ticket.to_dict()
 
+        conn = None
+        cur = None
         try:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute(
-                """
+            assignments = [f"{key} = %s" for key in clean_updates]
+            params = list(clean_updates.values())
+            assignments.append("updated_at = now()")
+            params.append(ticket_id)
+            cur.execute(f"""
                 update tickets
-                set status = %s, updated_at = now()
+                set {", ".join(assignments)}
                 where id = %s
                 returning *
-                """,
-                (status, ticket_id),
-            )
+            """, params)
             row = cur.fetchone()
             conn.commit()
-            cur.close()
-            conn.close()
             return self._serialize_row(row) if row else None
         except Exception as exc:
-            print(f"[db] failed to update ticket status: {exc}")
+            print(f"[db] failed to update ticket: {exc}")
             ticket = self._find_memory_ticket(ticket_id)
             if not ticket:
                 return None
-            ticket.status = status
+            for key, value in clean_updates.items():
+                setattr(ticket, key, value)
             ticket.updated_at = utc_now()
             return ticket.to_dict()
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
 
-    def resolve_ticket(self, ticket_id: str):
-        """Mark a ticket as resolved and stamp resolved_at."""
+    def update_ticket_status(self, ticket_id: str, status: str):
+        return self.update_ticket(ticket_id, {"status": status})
+
+    def resolve_ticket(self, ticket_id: str, extra_updates: Optional[dict] = None):
+        updates = extra_updates or {}
+
         if not self._db_available():
             ticket = self._find_memory_ticket(ticket_id)
             if not ticket:
                 return None
+            for key, value in updates.items():
+                if key in {"priority", "assigned_to"}:
+                    setattr(ticket, key, value)
             ticket.status = "resolved"
             ticket.updated_at = utc_now()
-            ticket.resolved_at = utc_now()
+            ticket.resolved_at = ticket.resolved_at or utc_now()
             return ticket.to_dict()
 
+        conn = None
+        cur = None
         try:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute(
-                """
+            assignments = ["status = 'resolved'", "resolved_at = coalesce(resolved_at, now())", "updated_at = now()"]
+            params = []
+            for key in ("priority", "assigned_to"):
+                if key in updates:
+                    assignments.append(f"{key} = %s")
+                    params.append(updates[key])
+            params.append(ticket_id)
+            cur.execute(f"""
                 update tickets
-                set status = 'resolved', resolved_at = now(), updated_at = now()
+                set {", ".join(assignments)}
                 where id = %s
                 returning *
-                """,
-                (ticket_id,),
-            )
+            """, params)
             row = cur.fetchone()
             conn.commit()
-            cur.close()
-            conn.close()
             return self._serialize_row(row) if row else None
         except Exception as exc:
             print(f"[db] failed to resolve ticket: {exc}")
@@ -221,15 +286,76 @@ class TicketRouter:
                 return None
             ticket.status = "resolved"
             ticket.updated_at = utc_now()
-            ticket.resolved_at = utc_now()
+            ticket.resolved_at = ticket.resolved_at or utc_now()
             return ticket.to_dict()
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
+
+    def get_ticket(self, ticket_id: str) -> Optional[dict]:
+        if not self._db_available():
+            ticket = self._find_memory_ticket(ticket_id)
+            return ticket.to_dict() if ticket else None
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("select * from tickets where id = %s", (ticket_id,))
+            row = cur.fetchone()
+            return self._serialize_row(row) if row else None
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
+
+    def list_messages(self, ticket_id: str) -> list[dict]:
+        if not self._db_available():
+            return [self._serialize_row(message) for message in self._memory_messages.get(ticket_id, [])]
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(
+                "select * from messages where ticket_id = %s order by created_at asc",
+                (ticket_id,),
+            )
+            return [self._serialize_row(row) for row in cur.fetchall()]
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
+
+    def ticket_to_dict(self, ticket: Ticket) -> dict:
+        return ticket.to_dict()
 
     def _save_ticket(self, ticket: Ticket):
         if not self._db_available():
-            print(f"[db] No database configured. Ticket kept in memory: {ticket.id}")
             self._memory_tickets.append(ticket)
+            self._memory_messages.setdefault(ticket.id, [])
+            if ticket.raw_message:
+                self._memory_messages[ticket.id].append({
+                    "id": str(uuid.uuid4()),
+                    "business_id": ticket.business_id,
+                    "ticket_id": ticket.id,
+                    "customer_phone": ticket.customer_phone,
+                    "channel": ticket.channel,
+                    "direction": "inbound",
+                    "body": ticket.raw_message,
+                    "created_at": ticket.created_at,
+                })
+            print(f"[db] No database configured. Ticket kept in memory: {ticket.id}")
             return
 
+        conn = None
+        cur = None
         try:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
@@ -261,11 +387,14 @@ class TicketRouter:
                 ),
             )
             conn.commit()
-            cur.close()
-            conn.close()
         except Exception as exc:
             print(f"[db] failed to save ticket: {exc}")
             self._memory_tickets.append(ticket)
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
 
     def _db_available(self) -> bool:
         return bool(self.db_url and psycopg2 is not None)
@@ -274,22 +403,27 @@ class TicketRouter:
         if not self._db_available():
             return None
 
+        conn = None
+        cur = None
         try:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
             cur.execute("select industry from businesses where id = %s", (business_id,))
             row = cur.fetchone()
-            cur.close()
-            conn.close()
             return row[0] if row else None
         except Exception as exc:
             print(f"[db] failed to load business industry: {exc}")
             return None
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
 
     def _find_memory_ticket(self, ticket_id: str) -> Optional[Ticket]:
         return next((ticket for ticket in self._memory_tickets if ticket.id == ticket_id), None)
 
-    def _clean_filters(self, filters: Dict) -> Dict:
+    def _clean_filters(self, filters: dict) -> dict:
         cleaned = {}
         for key, value in filters.items():
             if key not in FILTER_FIELDS or value in (None, ""):
@@ -300,7 +434,7 @@ class TicketRouter:
                 cleaned[key] = value
         return cleaned
 
-    def _matches_filters(self, ticket: Ticket, filters: Dict) -> bool:
+    def _matches_filters(self, ticket: Ticket, filters: dict) -> bool:
         for key, value in filters.items():
             if key == "date_from":
                 if ticket.created_at < value:
@@ -311,25 +445,25 @@ class TicketRouter:
 
     def _parse_date_from(self, value) -> datetime:
         if isinstance(value, datetime):
-            return value if value.tzinfo else value.replace(tzinfo=UTC)
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
         if isinstance(value, date):
-            return datetime.combine(value, time.min, tzinfo=UTC)
+            return datetime.combine(value, time.min, tzinfo=timezone.utc)
         if str(value).lower() == "today":
-            return datetime.combine(date.today(), time.min, tzinfo=UTC)
+            return datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
         try:
             parsed = datetime.fromisoformat(str(value))
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
         except ValueError as exc:
             raise ValueError(f"Invalid date_from '{value}'. Use ISO format or today.") from exc
 
-    def _serialize_row(self, row) -> Dict:
+    def _serialize_row(self, row) -> dict:
         data = dict(row)
         for key, value in data.items():
             if isinstance(value, datetime):
                 data[key] = format_datetime(value)
         return data
 
-    def _validate_required(self, values: Dict):
+    def _validate_required(self, values: dict):
         missing = [key for key, value in values.items() if value in (None, "")]
         if missing:
             raise ValueError(f"Missing required ticket field(s): {', '.join(missing)}")

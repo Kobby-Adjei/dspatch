@@ -70,13 +70,15 @@ Everything below is in service of making that demo work cleanly.
 Ownership:
 
 ```
-Business onboards → profile saved → AI answers from business context → urgency detected
+Business onboards → profile saved → AI answers from business context → urgency detected → voice call agent
 ```
 
 Owned files:
 
 - `onboarding/business_setup.py`
 - `agent/watsonx.py`
+- `agent/gemini.py`
+- `agent/main.py`
 - `.env.example`
 - `README.md`
 - `onboarding/examples/*.json`
@@ -149,7 +151,7 @@ Valid `industry` values: `home_services`, `hospitality`, `retail`
 
 #### Kobby Tasks
 
-Kobby owns AI fallback, urgency detection, and demo reliability.
+Kobby owns AI fallback, urgency detection, the full voice call agent pipeline, and demo reliability.
 
 **Urgency Signal Table**
 
@@ -166,7 +168,9 @@ The AI must classify urgency using this signal priority:
 
 **Tasks:**
 
-- Add `WATSONX_ENABLED=false` support in `agent/watsonx.py`
+**AI + Urgency tasks (`agent/watsonx.py`):**
+
+- Add `WATSONX_ENABLED=false` support
 - Build `classify_urgency(message, routing_rules)` function:
   - Check emergency keywords → `emergency`
   - Check urgent keywords → `urgent`
@@ -184,13 +188,36 @@ def build_support_prompt(business_profile, customer_message, context_chunks):
 ```
 
 - Add `WATSONX_ENABLED=false` fallback that returns a deterministic business-aware response
-- Update `.env.example`:
+
+**All Twilio webhooks (`agent/twilio_handler.py`):**
+
+- Own `/sms` — inbound SMS → classify → create operational record → respond to customer
+- Own `/voice` — accept Twilio call, return TwiML that streams audio to Pipecat WebSocket
+- Log `CallSid`, `From`, `To` on every inbound contact
+
+**Voice call agent (`agent/main.py`, `agent/gemini.py`):**
+
+- Set up Pipecat pipeline in `agent/main.py`:
+  - Accept WebSocket audio from Twilio `/voice` stream
+  - Pipe audio through Gemini Live for real-time transcription + response
+  - Feed business context from watsonx into the conversation
+- Build `agent/gemini.py`:
+  - Gemini Live session management
+  - Real-time audio streaming (input + output)
+  - Transcript capture for ticket creation
+- Build `transcript_to_record(transcript, business_profile)`:
+  - Extract issue summary, urgency, ticket type, callback number
+  - Use business routing rules to classify
+  - Return structured ticket payload for Yasrib to persist
+
+**Update `.env.example`:**
 
 ```
 WATSONX_ENABLED=false
 GEMINI_ENABLED=false
 TWILIO_VALIDATE_SIGNATURES=false
 DEMO_BUSINESS_ID=detroit-plumbing-co
+WEBSOCKET_URL=wss://localhost:8765
 ```
 
 **Acceptance criteria:**
@@ -215,14 +242,16 @@ DEMO_BUSINESS_ID=detroit-plumbing-co
 Ownership:
 
 ```
-Customer contacts → operational record created → dashboard/API reflects live state
+Operational records → dashboard API reflects live state
 ```
 
 Owned files:
 
 - `ticketing/ticket_router.py`
-- `agent/twilio_handler.py`
 - `db/schema.sql`
+- API routes only in `agent/twilio_handler.py`
+
+> All Twilio webhooks (`/voice` and `/sms`) are owned by Kobby. Ify owns the JSON API routes only.
 
 ---
 
@@ -306,25 +335,7 @@ messages (
 
 #### Ify Tasks
 
-Ify owns Twilio webhooks and the ticket API.
-
-**SMS Webhook**
-
-Inbound SMS → classify → create operational record → return confirmation to customer.
-
-The response to the customer must be business-aware, not generic.
-
-For an emergency:
-```
-Your emergency request has been received.
-A technician from Detroit Plumbing Co. will contact you shortly.
-```
-
-For a standard inquiry:
-```
-Thanks for reaching out to Detroit Plumbing Co.
-We've noted your request and will follow up during business hours.
-```
+Ify owns the JSON ticket API only. No Twilio webhooks — those are Kobby's.
 
 **API Routes**
 
@@ -341,11 +352,10 @@ GET    /tickets/:ticket_id/messages
 
 **Acceptance criteria:**
 
-- `"My basement is flooding."` from SMS creates an `Emergency Service` ticket with `urgency: emergency`
-- `GET /tickets?urgency=emergency` returns only emergency tickets (for Emergency Queue)
-- Empty SMS returns a helpful response and does not create a blank ticket
-- Missing business lookup falls back to `DEMO_BUSINESS_ID` in development
-- All responses are JSON
+- `GET /tickets?urgency=emergency` returns only emergency tickets
+- `GET /tickets?ticket_type=Appointment+Request` returns only that type
+- All responses are JSON, never HTML
+- `PATCH /tickets/:ticket_id` accepts `status`, `priority`, `assigned_to`
 
 ---
 
@@ -466,21 +476,38 @@ Dashboard queries the backend needs to support:
 
 ---
 
-## Sprint 4 — Voice Path
+## Sprint 4 — Voice Call Agent
 
 **Timebox:** 1–2 days
 
 **This is the riskiest sprint. SMS is the guaranteed demo path. Do not skip SMS to chase voice.**
 
-### Team 1
-- Build `transcript_to_record(transcript, business_profile)`:
-  - Extract issue summary, urgency, ticket type, callback number
-  - Use business routing rules to classify
+### Kobby — owns everything in this sprint
 
-### Team 2
-- Add `/voice` TwiML handler
-- Add call logging
-- Add `calls` table:
+Kobby owns the full voice pipeline end to end.
+
+**`agent/twilio_handler.py` — `/voice` webhook:**
+- Accept inbound Twilio call
+- Return TwiML that opens a `<Stream>` to the Pipecat WebSocket
+- Log `CallSid`, `From`, `To`
+
+**`agent/main.py` — Pipecat pipeline:**
+- Accept WebSocket audio stream from Twilio
+- Pass audio to Gemini Live for real-time transcription + spoken response
+- Inject business context from watsonx into each conversation turn
+- Capture final transcript when call ends
+
+**`agent/gemini.py` — Gemini Live integration:**
+- Manage Gemini Live session lifecycle
+- Handle real-time audio in/out
+- Expose transcript for `transcript_to_record()`
+
+**`transcript_to_record(transcript, business_profile)`:**
+- Extract issue summary, urgency, ticket type, callback number
+- Classify using business routing rules
+- Return structured ticket payload → Team 2 persists it
+
+**`calls` table (Kobby defines, Yasrib adds to schema):**
 
 ```sql
 calls (
@@ -496,12 +523,13 @@ calls (
 )
 ```
 
-### Kobby — Demo Reliability Call
-
-Kobby decides the final demo path:
+**Demo reliability decision:**
 
 - If real-time voice is stable → demo voice
-- If not → demo SMS + simulated transcript-to-ticket, which is still compelling
+- If not → demo SMS + simulated transcript-to-ticket (still compelling, do not drop this fallback)
+
+### Yasrib — one task only
+- Add the `calls` table to `db/schema.sql` once Kobby defines the shape above
 
 ---
 
