@@ -189,7 +189,13 @@ def build_support_prompt(business_profile, customer_message, context_chunks):
 
 - Add `WATSONX_ENABLED=false` fallback that returns a deterministic business-aware response
 
-**Voice call agent tasks (`agent/main.py`, `agent/gemini.py`):**
+**All Twilio webhooks (`agent/twilio_handler.py`):**
+
+- Own `/sms` — inbound SMS → classify → create operational record → respond to customer
+- Own `/voice` — accept Twilio call, return TwiML that streams audio to Pipecat WebSocket
+- Log `CallSid`, `From`, `To` on every inbound contact
+
+**Voice call agent (`agent/main.py`, `agent/gemini.py`):**
 
 - Set up Pipecat pipeline in `agent/main.py`:
   - Accept WebSocket audio from Twilio `/voice` stream
@@ -202,11 +208,7 @@ def build_support_prompt(business_profile, customer_message, context_chunks):
 - Build `transcript_to_record(transcript, business_profile)`:
   - Extract issue summary, urgency, ticket type, callback number
   - Use business routing rules to classify
-  - Return structured ticket payload for Team 2 to persist
-- Own the `/voice` webhook in `agent/twilio_handler.py`:
-  - Accept Twilio call
-  - Return TwiML that streams audio to the Pipecat WebSocket
-  - Log `CallSid`, `From`, `To`
+  - Return structured ticket payload for Yasrib to persist
 
 **Update `.env.example`:**
 
@@ -240,16 +242,16 @@ WEBSOCKET_URL=wss://localhost:8765
 Ownership:
 
 ```
-Inbound SMS → operational record created → dashboard/API reflects live state
+Operational records → dashboard API reflects live state
 ```
 
 Owned files:
 
 - `ticketing/ticket_router.py`
 - `db/schema.sql`
-- `/sms` webhook and all API routes in `agent/twilio_handler.py`
+- API routes only in `agent/twilio_handler.py`
 
-> Note: `/voice` webhook is owned by Kobby — it bridges directly into the Pipecat/Gemini call agent pipeline.
+> All Twilio webhooks (`/voice` and `/sms`) are owned by Kobby. Ify owns the JSON API routes only.
 
 ---
 
@@ -333,25 +335,7 @@ messages (
 
 #### Ify Tasks
 
-Ify owns Twilio webhooks and the ticket API.
-
-**SMS Webhook**
-
-Inbound SMS → classify → create operational record → return confirmation to customer.
-
-The response to the customer must be business-aware, not generic.
-
-For an emergency:
-```
-Your emergency request has been received.
-A technician from Detroit Plumbing Co. will contact you shortly.
-```
-
-For a standard inquiry:
-```
-Thanks for reaching out to Detroit Plumbing Co.
-We've noted your request and will follow up during business hours.
-```
+Ify owns the JSON ticket API only. No Twilio webhooks — those are Kobby's.
 
 **API Routes**
 
@@ -368,11 +352,10 @@ GET    /tickets/:ticket_id/messages
 
 **Acceptance criteria:**
 
-- `"My basement is flooding."` from SMS creates an `Emergency Service` ticket with `urgency: emergency`
-- `GET /tickets?urgency=emergency` returns only emergency tickets (for Emergency Queue)
-- Empty SMS returns a helpful response and does not create a blank ticket
-- Missing business lookup falls back to `DEMO_BUSINESS_ID` in development
-- All responses are JSON
+- `GET /tickets?urgency=emergency` returns only emergency tickets
+- `GET /tickets?ticket_type=Appointment+Request` returns only that type
+- All responses are JSON, never HTML
+- `PATCH /tickets/:ticket_id` accepts `status`, `priority`, `assigned_to`
 
 ---
 
@@ -545,7 +528,7 @@ calls (
 - If real-time voice is stable → demo voice
 - If not → demo SMS + simulated transcript-to-ticket (still compelling, do not drop this fallback)
 
-### Team 2 — one task only
+### Yasrib — one task only
 - Add the `calls` table to `db/schema.sql` once Kobby defines the shape above
 
 ---
