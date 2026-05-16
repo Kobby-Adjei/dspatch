@@ -124,6 +124,47 @@ class TicketApiTest(unittest.TestCase):
         self.assertEqual(data["tickets"][0]["suggested_action"], "Immediate callback")
         self.assertEqual(data["tickets"][0]["issue_summary"], "Basement flooding - water leak")
 
+        messages_response = self.client.get(f"/tickets/{data['tickets'][0]['id']}/messages")
+        messages = messages_response.get_json()["messages"]
+
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0]["direction"], "inbound")
+        self.assertEqual(messages[0]["body"], "My basement is flooding.")
+        self.assertEqual(messages[1]["direction"], "outbound")
+        self.assertIn("Your emergency request has been received", messages[1]["body"])
+        self.assertEqual({message["ticket_id"] for message in messages}, {data["tickets"][0]["id"]})
+        self.assertEqual({message["business_id"] for message in messages}, {"detroit-plumbing-co"})
+        self.assertEqual({message["customer_phone"] for message in messages}, {"+13135550101"})
+        self.assertEqual({message["channel"] for message in messages}, {"sms"})
+
+    def test_sms_calls_team1_responder_and_stores_exact_outbound_reply(self):
+        with patch.object(self.module, "generate_response", return_value="Team 1 generated this reply.") as responder:
+            response = self.client.post(
+                "/sms",
+                data={
+                    "From": "+13135550104",
+                    "To": "+13135550100",
+                    "Body": "Can I book an appointment?",
+                },
+            )
+
+        tickets_response = self.client.get("/businesses/detroit-plumbing-co/tickets?ticket_type=Appointment+Request")
+        ticket = tickets_response.get_json()["tickets"][0]
+        messages = self.client.get(f"/tickets/{ticket['id']}/messages").get_json()["messages"]
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("<Message>Team 1 generated this reply.</Message>", response.get_data(as_text=True))
+        responder.assert_called_once()
+        responder_kwargs = responder.call_args.kwargs
+        self.assertEqual(responder_kwargs["business_profile"]["id"], "detroit-plumbing-co")
+        self.assertEqual(responder_kwargs["customer_message"], "Can I book an appointment?")
+        self.assertEqual(responder_kwargs["urgency"], "medium")
+        self.assertEqual(messages[0]["direction"], "inbound")
+        self.assertEqual(messages[0]["body"], "Can I book an appointment?")
+        self.assertEqual(messages[1]["direction"], "outbound")
+        self.assertEqual(messages[1]["body"], "Team 1 generated this reply.")
+        self.assertEqual(messages[1]["ticket_id"], ticket["id"])
+
     def test_sms_question_creates_lower_priority_quote_request(self):
         self.client.post(
             "/sms",

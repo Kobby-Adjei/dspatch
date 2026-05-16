@@ -11,6 +11,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from agent.watsonx import generate_response
 from ticketing.ticket_router import TicketRouter
 
 app = Flask(__name__)
@@ -18,6 +19,12 @@ ticket_router = TicketRouter()
 
 DEMO_BUSINESS_ID = os.getenv("DEMO_BUSINESS_ID", "detroit-plumbing-co")
 DEMO_INDUSTRY = os.getenv("DEMO_INDUSTRY", "home_services")
+DEMO_BUSINESS_PROFILE = {
+    "id": DEMO_BUSINESS_ID,
+    "name": os.getenv("DEMO_BUSINESS_NAME", "Detroit Plumbing Co."),
+    "industry": DEMO_INDUSTRY,
+    "hours": {"mon-fri": "8am-6pm", "sat": "9am-3pm", "sun": "closed"},
+}
 
 EMERGENCY_KEYWORDS = ("flood", "flooding", "burst pipe", "no heat", "no hot water", "gas leak")
 URGENT_KEYWORDS = ("broken", "not working", "leaking", "backed up")
@@ -69,8 +76,23 @@ def sms_webhook():
     )
     print(f"[ticket] {ticket.ticket_type} ticket created: {ticket.id}")
 
+    ai_reply = generate_response(
+        business_profile=DEMO_BUSINESS_PROFILE,
+        customer_message=incoming_msg,
+        context_chunks=[],
+        urgency=urgency,
+    )
+    ticket_router.add_message(
+        business_id=ticket.business_id,
+        ticket_id=ticket.id,
+        customer_phone=customer_phone,
+        channel="sms",
+        direction="outbound",
+        body=ai_reply,
+    )
+
     response = MessagingResponse()
-    response.message(build_customer_response(urgency))
+    response.message(ai_reply)
     return Response(str(response), mimetype="text/xml")
 
 @app.route("/health", methods=["GET"])
@@ -247,11 +269,6 @@ def build_issue_summary(message: str, urgency: str) -> str:
     if urgency == "emergency":
         return message or "Emergency customer request"
     return message or "Customer inquiry"
-
-def build_customer_response(urgency: str) -> str:
-    if urgency == "emergency":
-        return "Your emergency request has been received. A technician from Detroit Plumbing Co. will contact you shortly."
-    return "DSPatch received your message. We'll follow up shortly!"
 
 def _first_keyword_match(text: str, keywords) -> str:
     return next((keyword for keyword in keywords if keyword in text), "")

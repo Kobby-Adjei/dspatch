@@ -327,6 +327,80 @@ class TicketRouter:
                 (ticket_id,),
             )
             return [self._serialize_row(row) for row in cur.fetchall()]
+        except Exception as exc:
+            print(f"[db] failed to list messages: {exc}")
+            return [self._serialize_row(message) for message in self._memory_messages.get(ticket_id, [])]
+        finally:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
+
+    def add_message(
+        self,
+        business_id: str,
+        ticket_id: Optional[str],
+        customer_phone: str,
+        channel: str,
+        direction: str,
+        body: str,
+    ) -> dict:
+        self._validate_required({
+            "business_id": business_id,
+            "channel": channel,
+            "direction": direction,
+            "body": body,
+        })
+        if direction not in {"inbound", "outbound"}:
+            raise ValueError("Invalid direction. Valid values: inbound, outbound")
+
+        message = {
+            "id": str(uuid.uuid4()),
+            "business_id": business_id,
+            "ticket_id": ticket_id,
+            "customer_phone": customer_phone,
+            "channel": channel,
+            "direction": direction,
+            "body": body,
+            "created_at": utc_now(),
+        }
+
+        if not self._db_available():
+            self._store_memory_message(message)
+            return self._serialize_row(message)
+
+        conn = None
+        cur = None
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute(
+                """
+                insert into messages (
+                    id, business_id, ticket_id, customer_phone, channel,
+                    direction, body, created_at
+                )
+                values (%s, %s, %s, %s, %s, %s, %s, %s)
+                returning *
+                """,
+                (
+                    message["id"],
+                    message["business_id"],
+                    message["ticket_id"],
+                    message["customer_phone"],
+                    message["channel"],
+                    message["direction"],
+                    message["body"],
+                    message["created_at"],
+                ),
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return self._serialize_row(row)
+        except Exception as exc:
+            print(f"[db] failed to save message: {exc}")
+            self._store_memory_message(message)
+            return self._serialize_row(message)
         finally:
             if cur:
                 cur.close()
@@ -339,18 +413,8 @@ class TicketRouter:
     def _save_ticket(self, ticket: Ticket):
         if not self._db_available():
             self._memory_tickets.append(ticket)
-            self._memory_messages.setdefault(ticket.id, [])
             if ticket.raw_message:
-                self._memory_messages[ticket.id].append({
-                    "id": str(uuid.uuid4()),
-                    "business_id": ticket.business_id,
-                    "ticket_id": ticket.id,
-                    "customer_phone": ticket.customer_phone,
-                    "channel": ticket.channel,
-                    "direction": "inbound",
-                    "body": ticket.raw_message,
-                    "created_at": ticket.created_at,
-                })
+                self._store_inbound_message_for_ticket(ticket)
             print(f"[db] No database configured. Ticket kept in memory: {ticket.id}")
             return
 
@@ -390,11 +454,20 @@ class TicketRouter:
         except Exception as exc:
             print(f"[db] failed to save ticket: {exc}")
             self._memory_tickets.append(ticket)
+            if ticket.raw_message:
+                self._store_inbound_message_for_ticket(ticket)
+            return
         finally:
             if cur:
                 cur.close()
             if conn:
                 conn.close()
+
+        if ticket.raw_message:
+            try:
+                self._store_inbound_message_for_ticket(ticket)
+            except Exception as exc:
+                print(f"[db] failed to save inbound message for ticket {ticket.id}: {exc}")
 
     def _db_available(self) -> bool:
         return bool(self.db_url and psycopg2 is not None)
@@ -422,6 +495,21 @@ class TicketRouter:
 
     def _find_memory_ticket(self, ticket_id: str) -> Optional[Ticket]:
         return next((ticket for ticket in self._memory_tickets if ticket.id == ticket_id), None)
+
+    def _store_inbound_message_for_ticket(self, ticket: Ticket) -> dict:
+        return self.add_message(
+            business_id=ticket.business_id,
+            ticket_id=ticket.id,
+            customer_phone=ticket.customer_phone,
+            channel=ticket.channel,
+            direction="inbound",
+            body=ticket.raw_message,
+        )
+
+    def _store_memory_message(self, message: dict):
+        ticket_id = message.get("ticket_id")
+        if ticket_id:
+            self._memory_messages.setdefault(ticket_id, []).append(message)
 
     def _clean_filters(self, filters: dict) -> dict:
         cleaned = {}

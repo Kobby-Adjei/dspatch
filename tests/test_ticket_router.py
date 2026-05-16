@@ -2,6 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+import ticketing.ticket_router as ticket_router_module
 from ticketing.ticket_router import TicketRouter
 
 
@@ -173,7 +174,99 @@ class TicketRouterTest(unittest.TestCase):
         messages = self.router.list_messages(ticket.id)
 
         self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["business_id"], ticket.business_id)
         self.assertEqual(messages[0]["ticket_id"], ticket.id)
+        self.assertEqual(messages[0]["customer_phone"], ticket.customer_phone)
+        self.assertEqual(messages[0]["channel"], "sms")
+        self.assertEqual(messages[0]["direction"], "inbound")
+        self.assertEqual(messages[0]["body"], "My basement is flooding.")
+        self.assertTrue(messages[0]["created_at"].endswith("Z"))
+
+    def test_add_message_links_outbound_message_to_ticket(self):
+        ticket = create_demo_ticket(self.router)
+
+        message = self.router.add_message(
+            business_id=ticket.business_id,
+            ticket_id=ticket.id,
+            customer_phone=ticket.customer_phone,
+            channel="sms",
+            direction="outbound",
+            body="A team member will contact you shortly.",
+        )
+        messages = self.router.list_messages(ticket.id)
+
+        self.assertEqual(message["ticket_id"], ticket.id)
+        self.assertEqual(message["business_id"], ticket.business_id)
+        self.assertEqual(message["customer_phone"], ticket.customer_phone)
+        self.assertEqual(message["channel"], "sms")
+        self.assertEqual(message["direction"], "outbound")
+        self.assertTrue(message["created_at"].endswith("Z"))
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1]["body"], "A team member will contact you shortly.")
+
+    def test_add_message_rejects_invalid_direction(self):
+        ticket = create_demo_ticket(self.router)
+
+        with self.assertRaisesRegex(ValueError, "Invalid direction"):
+            self.router.add_message(
+                business_id=ticket.business_id,
+                ticket_id=ticket.id,
+                customer_phone=ticket.customer_phone,
+                channel="sms",
+                direction="sideways",
+                body="Nope.",
+            )
+
+    def test_add_message_falls_back_to_memory_when_db_insert_fails(self):
+        ticket = create_demo_ticket(self.router)
+        self.router.db_url = "postgresql://example"
+
+        with patch.object(ticket_router_module, "psycopg2", _FakePsycopg2()):
+            message = self.router.add_message(
+                business_id=ticket.business_id,
+                ticket_id=ticket.id,
+                customer_phone=ticket.customer_phone,
+                channel="sms",
+                direction="outbound",
+                body="Fallback saved.",
+            )
+
+        messages = self.router.list_messages(ticket.id)
+
+        self.assertEqual(message["body"], "Fallback saved.")
+        self.assertEqual(messages[-1]["direction"], "outbound")
+        self.assertEqual(messages[-1]["body"], "Fallback saved.")
+
+    def test_list_messages_falls_back_to_memory_when_db_read_fails(self):
+        ticket = create_demo_ticket(self.router)
+        self.router.add_message(
+            business_id=ticket.business_id,
+            ticket_id=ticket.id,
+            customer_phone=ticket.customer_phone,
+            channel="sms",
+            direction="outbound",
+            body="Stored in memory.",
+        )
+        self.router.db_url = "postgresql://example"
+
+        with patch.object(ticket_router_module, "psycopg2", _FakePsycopg2()):
+            messages = self.router.list_messages(ticket.id)
+
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1]["body"], "Stored in memory.")
+
+    def test_create_ticket_falls_back_to_memory_and_preserves_inbound_message_when_db_save_fails(self):
+        self.router.db_url = "postgresql://example"
+
+        with patch.object(ticket_router_module, "psycopg2", _FakePsycopg2()):
+            ticket = create_demo_ticket(self.router)
+
+        tickets = self.router.list_tickets("detroit-plumbing-co")
+        messages = self.router.list_messages(ticket.id)
+
+        self.assertEqual(len(tickets), 1)
+        self.assertEqual(tickets[0]["id"], ticket.id)
+        self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["direction"], "inbound")
         self.assertEqual(messages[0]["body"], "My basement is flooding.")
 
@@ -201,6 +294,28 @@ class TicketRouterTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Invalid date_from"):
             self.router.list_tickets("detroit-plumbing-co", {"date_from": "not-a-date"})
+
+class _FakeCursor:
+    description = []
+
+    def execute(self, *_args, **_kwargs):
+        raise RuntimeError("database unavailable")
+
+    def close(self):
+        pass
+
+
+class _FakeConnection:
+    def cursor(self, *_args, **_kwargs):
+        return _FakeCursor()
+
+    def close(self):
+        pass
+
+
+class _FakePsycopg2:
+    def connect(self, *_args, **_kwargs):
+        return _FakeConnection()
 
 
 if __name__ == "__main__":
