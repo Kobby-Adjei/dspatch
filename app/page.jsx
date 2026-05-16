@@ -53,13 +53,13 @@ function Hero() {
           className="absolute inset-0 h-full w-full scale-105 border-0 opacity-95"
           title="DSPatch 3D operations mesh"
           src={heroSplineUrl}
-          intervalMs={18000}
+          intervalMs={9000}
         />
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,.18),transparent_34%,rgba(0,0,0,.18))]" />
         <div className="absolute inset-x-0 bottom-0 h-[clamp(4.25rem,8.5vh,6.25rem)] bg-black px-5 md:px-10">
           <div className="mx-auto flex h-full max-w-7xl items-center justify-center">
-            <h1 className="typewriter-headline translate-y-[clamp(1rem,2.4vh,1.75rem)] overflow-hidden whitespace-nowrap text-center text-[clamp(.95rem,2.35vw,2.25rem)] font-black leading-none tracking-tight text-white">
-              Run your <span className="text-orange-500">small business</span> with <span className="text-orange-500">enterprise-level operations</span>
+            <h1 className="typewriter-headline translate-y-[clamp(1rem,2.4vh,1.75rem)] overflow-hidden whitespace-nowrap text-center text-[clamp(.95rem,2.35vw,2.25rem)] font-black leading-none tracking-tight text-orange-500">
+              Big-business customer operations for <span className="underline decoration-current underline-offset-4">small businesses</span>.
             </h1>
           </div>
         </div>
