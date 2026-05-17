@@ -160,9 +160,7 @@ function StepIndustry({ values, onChange, onNext }) {
               key={ind.value}
               type="button"
               onClick={() => {
-                const preset = INDUSTRIES.find((i) => i.value === ind.value);
                 onChange("industry", ind.value);
-                onChange("services", [...preset.services]);
               }}
               className={`group relative flex flex-col overflow-hidden rounded-2xl border text-left transition-all duration-200 active:scale-[0.97] ${
                 active
@@ -217,33 +215,15 @@ function StepIndustry({ values, onChange, onNext }) {
 }
 
 
-/* ── Step 2 — Details ────────────────────────────────────────────────────────*/
+/* ── Step 2 — Account ────────────────────────────────────────────────────────*/
 
 function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
   const nameRef = useRef(null);
-  const [custom, setCustom]     = useState("");
   const [showPass, setShowPass] = useState(false);
 
   useEffect(() => { nameRef.current?.focus(); }, []);
 
-  const preset = INDUSTRIES.find((i) => i.value === values.industry);
-  const allChips = preset
-    ? [...new Set([...preset.services, ...values.services])]
-    : values.services;
-
-  function toggleService(s) {
-    const curr = values.services;
-    onChange("services", curr.includes(s) ? curr.filter((x) => x !== s) : [...curr, s]);
-  }
-
-  function addCustom() {
-    const t = custom.trim();
-    if (!t || values.services.includes(t)) return;
-    onChange("services", [...values.services, t]);
-    setCustom("");
-  }
-
-  const canSubmit = values.name.trim() && values.services.length > 0 && values.email.trim() && values.password.length >= 8;
+  const canSubmit = values.name.trim() && values.email.trim() && values.password.length >= 8;
 
   return (
     <div className="mx-auto w-full max-w-[560px] px-6">
@@ -251,15 +231,15 @@ function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
         Step 02 of 04
       </p>
       <h2 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight md:text-5xl">
-        About your business.
+        Create your account.
       </h2>
       <p className="mt-4 text-sm leading-relaxed text-white/40">
-        Your AI agent will use this to respond accurately.
+        You'll use this to log back in and manage your agent.
       </p>
 
-      <div className="mt-10 grid gap-7">
+      <div className="mt-10 grid gap-5">
 
-        {/* Name */}
+        {/* Business name */}
         <div className="grid gap-2">
           <label className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/30">
             Business name
@@ -274,142 +254,45 @@ function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
           />
         </div>
 
-        {/* Services */}
-        <div className="grid gap-3">
+        {/* Email */}
+        <div className="grid gap-2">
           <label className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/30">
-            Services offered
+            Work email
           </label>
-          <div className="flex flex-wrap gap-2">
-            {allChips.map((s) => {
-              const on = values.services.includes(s);
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => toggleService(s)}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold transition-all duration-150 active:scale-[0.96] ${
-                    on
-                      ? "border border-orange-500/40 bg-orange-500/12 text-orange-200"
-                      : "border border-white/10 bg-white/[0.04] text-white/35 hover:border-white/20 hover:text-white/60"
-                  }`}
-                >
-                  {s}
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex gap-2">
+          <input
+            type="email"
+            required
+            value={values.email}
+            onChange={(e) => onChange("email", e.target.value)}
+            placeholder="you@yourbusiness.com"
+            className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40 focus:bg-white/[0.07]"
+          />
+        </div>
+
+        {/* Password */}
+        <div className="grid gap-2">
+          <label className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/30">
+            Password <span className="normal-case font-normal text-white/18">— min 8 characters</span>
+          </label>
+          <div className="relative">
             <input
-              value={custom}
-              onChange={(e) => setCustom(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustom())}
-              placeholder="Add a service…"
-              className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
+              type={showPass ? "text" : "password"}
+              required
+              value={values.password}
+              onChange={(e) => onChange("password", e.target.value)}
+              placeholder="••••••••"
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 pr-14 text-base text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40 focus:bg-white/[0.07]"
             />
             <button
               type="button"
-              onClick={addCustom}
-              disabled={!custom.trim()}
-              className="rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-xs font-bold text-white/40 transition-all duration-150 hover:border-white/20 hover:text-white/70 disabled:opacity-30"
+              onClick={() => setShowPass((p) => !p)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors text-[10px] font-semibold"
             >
-              Add
+              {showPass ? "hide" : "show"}
             </button>
           </div>
         </div>
 
-        {/* Hours */}
-        <div className="grid gap-3">
-          <label className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/30">
-            Business hours
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              ["Mon – Fri", values.weekday, (v) => onChange("weekday", v), "8am – 6pm"],
-              ["Sat – Sun", values.weekend, (v) => onChange("weekend", v), "9am – 3pm"],
-            ].map(([label, val, set, ph]) => (
-              <div key={label} className="grid gap-1.5">
-                <span className="text-[10px] text-white/25">{label}</span>
-                <input
-                  value={val}
-                  onChange={(e) => set(e.target.value)}
-                  placeholder={ph}
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Area code */}
-        <div className="grid gap-2">
-          <label className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/30">
-            Area code <span className="normal-case font-normal text-white/18">— optional, for a local number</span>
-          </label>
-          <input
-            value={values.areaCode}
-            onChange={(e) => onChange("areaCode", e.target.value.replace(/\D/g, "").slice(0, 3))}
-            placeholder="313"
-            maxLength={3}
-            className="w-32 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
-          />
-        </div>
-
-        {/* Account credentials */}
-        <div className="rounded-2xl border border-white/8 bg-white/[0.02] px-5 py-5 grid gap-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/30">
-            Your account — log back in anytime
-          </p>
-
-          <div className="grid gap-2">
-            <label className="text-[10px] font-bold uppercase tracking-[0.20em] text-white/25">
-              Work email
-            </label>
-            <input
-              type="email"
-              required
-              value={values.email}
-              onChange={(e) => onChange("email", e.target.value)}
-              placeholder="you@yourbusiness.com"
-              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <label className="text-[10px] font-bold uppercase tracking-[0.20em] text-white/25">
-              Password <span className="normal-case font-normal text-white/18">— min 8 characters</span>
-            </label>
-            <div className="relative">
-              <input
-                type={showPass ? "text" : "password"}
-                required
-                value={values.password}
-                onChange={(e) => onChange("password", e.target.value)}
-                placeholder="••••••••"
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 pr-12 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPass((p) => !p)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors text-[10px] font-semibold"
-              >
-                {showPass ? "hide" : "show"}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <label className="text-[10px] font-bold uppercase tracking-[0.20em] text-white/25">
-              Alert phone <span className="normal-case font-normal text-white/18">— optional, get SMS on emergencies</span>
-            </label>
-            <input
-              type="tel"
-              value={values.alertPhone}
-              onChange={(e) => onChange("alertPhone", e.target.value)}
-              placeholder="+13135550100"
-              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
-            />
-          </div>
-        </div>
       </div>
 
       {error && (
@@ -434,6 +317,13 @@ function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
           Back
         </button>
       </div>
+
+      <p className="mt-6 text-center text-xs text-white/25">
+        Already have an account?{" "}
+        <a href="/login" className="text-white/50 underline underline-offset-2 hover:text-white/80 transition-colors">
+          Log in
+        </a>
+      </p>
     </div>
   );
 }
@@ -634,14 +524,9 @@ export default function OnboardFlow() {
   const [values, setValues] = useState({
     industry: null,
     name:     "",
-    services: [],
-    weekday:  "8am – 6pm",
-    weekend:  "9am – 3pm",
-    areaCode: "",
-    email:      "",
-    password:   "",
-    alertPhone: "",
-    aiGoals:    [],
+    email:    "",
+    password: "",
+    aiGoals:  [],
   });
 
   function change(key, val) {
@@ -670,13 +555,9 @@ export default function OnboardFlow() {
         body: JSON.stringify({
           name:     values.name.trim(),
           industry: values.industry,
-          services: values.services,
-          hours:    { "mon-fri": values.weekday || "8am – 6pm", "sat-sun": values.weekend || "Closed" },
           email:    values.email.trim().toLowerCase(),
           password: values.password,
           ai_goals: values.aiGoals,
-          ...(values.areaCode.trim()   && { area_code:   values.areaCode.trim() }),
-          ...(values.alertPhone.trim() && { alert_phone: values.alertPhone.trim() }),
         }),
       });
       const data = await res.json();
