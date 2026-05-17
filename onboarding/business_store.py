@@ -25,6 +25,69 @@ def _ensure_db(client):
         pass
 
 
+def update_integrations(business_id: str, integration_key: str, data: dict) -> bool:
+    """Merge integration credentials into the business document."""
+    if not CLOUDANT_ENABLED:
+        return False
+    client = _client()
+    try:
+        doc = client.get_document(db=DB, doc_id=business_id).get_result()
+        integrations = doc.get("integrations", {})
+        if data is None:
+            integrations.pop(integration_key, None)
+        else:
+            integrations[integration_key] = {**integrations.get(integration_key, {}), **data}
+        doc["integrations"] = integrations
+        client.put_document(db=DB, doc_id=business_id, document=doc).get_result()
+        return True
+    except Exception as exc:
+        print(f"[business] update_integrations failed: {exc}")
+        return False
+
+
+def ensure_indexes():
+    """Create Cloudant indexes for businesses (phone, email) and knowledge (business_id)."""
+    if not CLOUDANT_ENABLED:
+        return
+    try:
+        client = _client()
+        _ensure_db(client)
+
+        # businesses DB indexes
+        for field in ("phone", "email"):
+            try:
+                client.post_index(
+                    db   = DB,
+                    index= {"fields": [field]},
+                    ddoc = f"idx-{field}",
+                    name = f"{field}-index",
+                    type = "json",
+                ).get_result()
+                print(f"[cloudant] index ready: businesses.{field}")
+            except Exception as exc:
+                print(f"[cloudant] index businesses.{field}: {exc}")
+
+        # knowledge DB + index
+        try:
+            client.put_database(db="knowledge").get_result()
+        except Exception:
+            pass
+        try:
+            client.post_index(
+                db   = "knowledge",
+                index= {"fields": ["business_id"]},
+                ddoc = "idx-business_id",
+                name = "business_id-index",
+                type = "json",
+            ).get_result()
+            print("[cloudant] index ready: knowledge.business_id")
+        except Exception as exc:
+            print(f"[cloudant] index knowledge.business_id: {exc}")
+
+    except Exception as exc:
+        print(f"[cloudant] ensure_indexes failed: {exc}")
+
+
 def save_business(profile: dict) -> dict:
     """
     Persist a business profile. Uses Cloudant when configured,
@@ -43,15 +106,17 @@ def save_business(profile: dict) -> dict:
     client = _client()
     _ensure_db(client)
 
+    now_str = datetime.utcnow().isoformat()
     doc = {
         "_id":        business_id,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": now_str,
         **profile,
     }
 
     try:
-        existing = client.get_document(db=DB, doc_id=business_id).get_result()
-        doc["_rev"] = existing["_rev"]
+        existing    = client.get_document(db=DB, doc_id=business_id).get_result()
+        doc["_rev"]        = existing["_rev"]
+        doc["created_at"]  = existing.get("created_at", now_str)
     except Exception:
         pass
 
@@ -105,14 +170,39 @@ def find_by_id(business_id: str) -> dict | None:
         return None
 
 
+def find_by_email(email: str) -> dict | None:
+    """Look up a business by owner email address."""
+    email = email.strip().lower()
+
+    if not CLOUDANT_ENABLED:
+        return _find_local_by_field("email", email)
+
+    client = _client()
+    _ensure_db(client)
+    try:
+        result = client.post_find(
+            db       = DB,
+            selector = {"email": {"$eq": email}},
+            limit    = 1,
+        ).get_result()
+        docs = result.get("docs", [])
+        return docs[0] if docs else None
+    except Exception as exc:
+        print(f"[business] email lookup failed: {exc}")
+    return None
+
+
 def _find_local_by_phone(phone_number: str) -> dict | None:
-    """Scan local example JSON files for a matching phone number."""
+    return _find_local_by_field("phone", phone_number)
+
+
+def _find_local_by_field(field: str, value: str) -> dict | None:
     import glob
     for path in glob.glob("onboarding/examples/*.json"):
         try:
             with open(path) as f:
                 profile = json.load(f)
-            if profile.get("phone") == phone_number:
+            if profile.get(field) == value:
                 return profile
         except Exception:
             continue

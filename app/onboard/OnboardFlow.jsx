@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import DLoader from "./DLoader";
+import { saveAuth } from "../lib/auth";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -199,7 +200,8 @@ function StepIndustry({ values, onChange, onNext }) {
 
 function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
   const nameRef = useRef(null);
-  const [custom, setCustom] = useState("");
+  const [custom, setCustom]     = useState("");
+  const [showPass, setShowPass] = useState(false);
 
   useEffect(() => { nameRef.current?.focus(); }, []);
 
@@ -220,7 +222,7 @@ function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
     setCustom("");
   }
 
-  const canSubmit = values.name.trim() && values.services.length > 0;
+  const canSubmit = values.name.trim() && values.services.length > 0 && values.email.trim() && values.password.length >= 8;
 
   return (
     <div className="mx-auto w-full max-w-[560px] px-6">
@@ -329,6 +331,63 @@ function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
             maxLength={3}
             className="w-32 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
           />
+        </div>
+
+        {/* Account credentials */}
+        <div className="rounded-2xl border border-white/8 bg-white/[0.02] px-5 py-5 grid gap-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/30">
+            Your account — log back in anytime
+          </p>
+
+          <div className="grid gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-[0.20em] text-white/25">
+              Work email
+            </label>
+            <input
+              type="email"
+              required
+              value={values.email}
+              onChange={(e) => onChange("email", e.target.value)}
+              placeholder="you@yourbusiness.com"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-[0.20em] text-white/25">
+              Password <span className="normal-case font-normal text-white/18">— min 8 characters</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showPass ? "text" : "password"}
+                required
+                value={values.password}
+                onChange={(e) => onChange("password", e.target.value)}
+                placeholder="••••••••"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 pr-12 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass((p) => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors text-[10px] font-semibold"
+              >
+                {showPass ? "hide" : "show"}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-[0.20em] text-white/25">
+              Alert phone <span className="normal-case font-normal text-white/18">— optional, get SMS on emergencies</span>
+            </label>
+            <input
+              type="tel"
+              value={values.alertPhone}
+              onChange={(e) => onChange("alertPhone", e.target.value)}
+              placeholder="+13135550100"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/18 outline-none transition-all duration-200 focus:border-orange-500/40"
+            />
+          </div>
         </div>
       </div>
 
@@ -449,7 +508,7 @@ function StepSuccess({ result, businessName }) {
       </div>
 
       <Link
-        href={`/dashboard?biz=${result.id}&api=${API_BASE}`}
+        href="/dashboard"
         className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-white py-4 text-sm font-black text-black transition-all duration-150 hover:bg-orange-50 active:scale-[0.98]"
       >
         Open command center <IconArrow />
@@ -476,6 +535,9 @@ export default function OnboardFlow() {
     weekday:  "8am – 6pm",
     weekend:  "9am – 3pm",
     areaCode: "",
+    email:      "",
+    password:   "",
+    alertPhone: "",
   });
 
   function change(key, val) {
@@ -489,10 +551,11 @@ export default function OnboardFlow() {
   }
 
   async function submit() {
-    // client-side guard
-    if (!values.name.trim()) { setError("Business name is required."); return; }
-    if (!values.industry)    { setError("Please select an industry."); return; }
-    if (values.services.length === 0) { setError("Select at least one service."); return; }
+    if (!values.name.trim())         { setError("Business name is required."); return; }
+    if (!values.industry)            { setError("Please select an industry."); return; }
+    if (values.services.length === 0){ setError("Select at least one service."); return; }
+    if (!values.email.trim())        { setError("Work email is required."); return; }
+    if (values.password.length < 8)  { setError("Password must be at least 8 characters."); return; }
 
     setLoading(true);
     setError("");
@@ -504,13 +567,17 @@ export default function OnboardFlow() {
           name:     values.name.trim(),
           industry: values.industry,
           services: values.services,
-          hours: { "mon-fri": values.weekday || "8am – 6pm", "sat-sun": values.weekend || "Closed" },
-          ...(values.areaCode.trim() && { area_code: values.areaCode.trim() }),
+          hours:    { "mon-fri": values.weekday || "8am – 6pm", "sat-sun": values.weekend || "Closed" },
+          email:    values.email.trim().toLowerCase(),
+          password: values.password,
+          ...(values.areaCode.trim()   && { area_code:   values.areaCode.trim() }),
+          ...(values.alertPhone.trim() && { alert_phone: values.alertPhone.trim() }),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
-      setResult(data);
+      saveAuth(data.token, data.business);
+      setResult(data.business);
       goTo(3);
     } catch (err) {
       if (err.name === "TypeError" && err.message.includes("fetch")) {
