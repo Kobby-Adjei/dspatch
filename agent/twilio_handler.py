@@ -20,9 +20,12 @@ from ticketing.ticket_router import TicketRouter
 
 app           = Flask(__name__)
 
-_cors_origin_env = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
-_cors_origins = [origin.strip() for origin in _cors_origin_env.split(",") if origin.strip()]
-CORS(app, origins=_cors_origins or ["http://localhost:3000"])
+_cors_origin_env = os.getenv("FRONTEND_ORIGIN", "*")
+if _cors_origin_env.strip() == "*":
+    CORS(app)
+else:
+    _cors_origins = [o.strip() for o in _cors_origin_env.split(",") if o.strip()]
+    CORS(app, origins=_cors_origins or ["http://localhost:3000"])
 ticket_router = TicketRouter()
 
 # Ensure Cloudant indexes exist for fast phone + email lookups
