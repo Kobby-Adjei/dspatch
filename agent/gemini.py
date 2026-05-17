@@ -104,7 +104,7 @@ class GeminiLiveSession:
                     start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
                     end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
                     prefix_padding_ms=300,
-                    silence_duration_ms=2000,
+                    silence_duration_ms=800,
                 ),
             ),
         )
@@ -163,7 +163,7 @@ class GeminiLiveSession:
         log("[gemini] connecting to Gemini Live...")
         try:
             async with self.client.aio.live.connect(
-                model="models/gemini-2.5-flash-native-audio-latest",
+                model="models/gemini-2.0-flash-live-001",
                 config=config,
             ) as session:
                 log("[gemini] connected, sending greeting trigger")
