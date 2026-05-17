@@ -36,12 +36,20 @@ function Nav() {
           <a href="#mission" className="hover:text-orange-100">Mission Control</a>
         </div>
 
-        <Link
-          href="/onboard"
-          className="hidden rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-orange-100 sm:inline-flex"
-        >
-          Get started
-        </Link>
+        <div className="hidden items-center gap-2 sm:flex">
+          <Link
+            href="/login"
+            className="rounded-full border border-white/15 px-5 py-2.5 text-sm font-semibold text-white/60 transition-colors hover:border-white/30 hover:text-white"
+          >
+            Log in
+          </Link>
+          <Link
+            href="/onboard"
+            className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-orange-100"
+          >
+            Sign up
+          </Link>
+        </div>
       </nav>
     </header>
   );
