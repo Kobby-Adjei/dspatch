@@ -141,8 +141,18 @@ def _twilio_valid(req) -> bool:
 
 # ── Business lookup ──────────────────────────────────────────────────────────
 
+FORCE_BUSINESS_ID = os.getenv("FORCE_BUSINESS_ID", "")
+
+
 def _resolve_business(to_number: str = "") -> dict:
     from onboarding.business_store import find_by_phone, find_by_id
+
+    # Test mode: pin all traffic to one business regardless of number called
+    if FORCE_BUSINESS_ID:
+        profile = find_by_id(FORCE_BUSINESS_ID)
+        if profile:
+            print(f"[business] FORCE_BUSINESS_ID active → {FORCE_BUSINESS_ID}")
+            return profile
 
     if to_number:
         profile = find_by_phone(to_number)
