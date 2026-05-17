@@ -50,7 +50,6 @@ ibmcloud ce secret create --name dspatch-env \
   --from-literal SENDGRID_API_KEY="${SENDGRID_API_KEY}" \
   --from-literal NOTIFY_FROM_EMAIL="${NOTIFY_FROM_EMAIL:-alerts@dspatch.ai}" \
   --from-literal ADMIN_API_KEY="${ADMIN_API_KEY}" \
-  --from-literal PROVISIONING_ENABLED="${PROVISIONING_ENABLED:-false}" \
   --from-literal FORCE_BUSINESS_ID="${FORCE_BUSINESS_ID:-}"
 
 IMAGE="docker.io/kobbyadu/dspatch:latest"
