@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 CLOUDANT_URL    = os.getenv("CLOUDANT_URL", "")
 CLOUDANT_APIKEY = os.getenv("CLOUDANT_APIKEY", "")
@@ -106,7 +106,7 @@ def save_business(profile: dict) -> dict:
     client = _client()
     _ensure_db(client)
 
-    now_str = datetime.utcnow().isoformat()
+    now_str = datetime.now(timezone.utc).isoformat()
     doc = {
         "_id":        business_id,
         "created_at": now_str,
@@ -144,7 +144,7 @@ def find_by_phone(phone_number: str) -> dict | None:
         ).get_result()
         docs = result.get("docs", [])
         if docs:
-            print(f"[business] found by phone {phone_number}: {docs[0]['id']}")
+            print(f"[business] found by phone {phone_number}: {docs[0].get('_id', docs[0].get('id', '?'))}")
             return docs[0]
     except Exception as exc:
         print(f"[business] phone lookup failed: {exc}")

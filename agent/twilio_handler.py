@@ -303,8 +303,17 @@ def create_business():
         print(f"[signup] number provisioning failed: {exc}")
         return jsonify({"error": "number provisioning failed", "detail": str(exc)}), 502
 
-    from onboarding.business_store import save_business
-    save_business(profile)
+    try:
+        from onboarding.business_store import save_business
+        save_business(profile)
+    except Exception as exc:
+        print(f"[signup] cloudant write failed, releasing number: {exc}")
+        try:
+            from onboarding.number_provisioner import release_number
+            release_number(profile["twilio_sid"])
+        except Exception:
+            pass
+        return jsonify({"error": "failed to save business — please try again"}), 500
 
     token        = _create_token(business_id)
     profile_safe = {k: v for k, v in profile.items() if k != "password_hash"}
@@ -439,7 +448,8 @@ def update_business(business_id):
             return jsonify({"error": "business not found"}), 404
         profile.update(updates)
         save_business(profile)
-        return jsonify({"ok": True, "business": profile})
+        profile_safe = {k: v for k, v in profile.items() if k not in ("password_hash", "_rev")}
+        return jsonify({"ok": True, "business": profile_safe})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

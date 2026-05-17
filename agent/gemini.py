@@ -186,15 +186,16 @@ class GeminiLiveSession:
                     yield chunk
 
                 send_task.cancel()
+                receive_task.cancel()
                 await asyncio.gather(send_task, receive_task, return_exceptions=True)
 
         except Exception as exc:
             log(f"[gemini] session error: {exc}")
-
-        transcript = " ".join(self.transcript_parts).strip()
-        if transcript:
-            log(f"[gemini] final transcript: {transcript}")
-            await self.on_transcript(transcript)
+        finally:
+            transcript = " ".join(self.transcript_parts).strip()
+            if transcript:
+                log(f"[gemini] final transcript: {transcript}")
+                await self.on_transcript(transcript)
 
     async def _simulate(self):
         await asyncio.sleep(0.3)

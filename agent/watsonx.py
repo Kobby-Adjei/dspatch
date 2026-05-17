@@ -1,4 +1,5 @@
 import os
+import re
 
 WATSONX_ENABLED = os.getenv("WATSONX_ENABLED", "false").strip().lower() in ("true", "1", "yes")
 
@@ -10,6 +11,10 @@ SENTIMENT_WORDS = [
 ]
 
 QUESTION_WORDS = ["hours", "price", "cost", "available", "when", "do you", "can you"]
+
+
+def _word_match(text: str, keywords: list) -> bool:
+    return any(re.search(r'\b' + re.escape(kw) + r'\b', text) for kw in keywords)
 
 
 def classify_urgency(message: str, routing_rules: dict) -> str:
@@ -25,15 +30,15 @@ def classify_urgency(message: str, routing_rules: dict) -> str:
     emergency_keywords = [kw.lower() for kw in emergency_keywords if isinstance(kw, str) and kw.strip()]
     urgent_keywords    = [kw.lower() for kw in urgent_keywords if isinstance(kw, str) and kw.strip()]
 
-    if any(kw in text for kw in emergency_keywords):
+    if _word_match(text, emergency_keywords):
         print(f"[urgency] emergency keyword detected in: '{message}'")
         return "emergency"
 
-    if any(kw in text for kw in urgent_keywords):
+    if _word_match(text, urgent_keywords):
         print(f"[urgency] urgent keyword detected in: '{message}'")
         return "urgent"
 
-    if any(word in text for word in SENTIMENT_WORDS):
+    if _word_match(text, SENTIMENT_WORDS):
         print(f"[urgency] negative sentiment detected in: '{message}'")
         return "high"
 
