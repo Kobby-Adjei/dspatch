@@ -247,7 +247,7 @@ def set_force_business():
 def create_business():
     data = request.get_json(force=True, silent=True) or {}
 
-    required = ["name", "industry", "hours", "services", "email", "password"]
+    required = ["name", "industry", "email", "password"]
     missing  = [f for f in required if not data.get(f)]
     if missing:
         return jsonify({"error": f"Missing required fields: {missing}"}), 400
@@ -255,12 +255,16 @@ def create_business():
     valid_industries = ["home_services", "hospitality", "retail"]
     if data["industry"] not in valid_industries:
         return jsonify({"error": f"industry must be one of {valid_industries}"}), 400
-    if not isinstance(data.get("services"), list) or not all(isinstance(s, str) and s.strip() for s in data["services"]):
-        return jsonify({"error": "services must be a non-empty list of strings"}), 400
-    if not isinstance(data.get("hours"), dict):
-        return jsonify({"error": "hours must be an object"}), 400
     if len(data["password"]) < 8:
         return jsonify({"error": "password must be at least 8 characters"}), 400
+
+    _default_services = {
+        "home_services": ["Emergency service", "Appointment scheduling", "Quote requests"],
+        "hospitality":   ["Reservations", "Takeout orders", "Catering inquiries"],
+        "retail":        ["Product inquiries", "Order requests", "Returns & exchanges"],
+    }
+    services = data.get("services") or _default_services.get(data["industry"], ["General inquiries"])
+    hours    = data.get("hours") or {"mon-fri": "8am-6pm", "sat-sun": "9am-5pm"}
 
     email = data["email"].strip().lower()
     from onboarding.business_store import find_by_email
@@ -278,8 +282,8 @@ def create_business():
         "email":         email,
         "password_hash": password_hash,
         "industry":      data["industry"],
-        "hours":         data["hours"],
-        "services":      data["services"],
+        "hours":         hours,
+        "services":      services,
         "pricing":       data.get("pricing", []),
         "faqs":          data.get("faqs", []),
         "ai_goals":      data.get("ai_goals", []),
