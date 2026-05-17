@@ -22,6 +22,9 @@ VALID_PRIORITIES = {"high", "medium", "low"}
 VALID_STATUSES   = {"open", "in_progress", "resolved"}
 FILTER_FIELDS    = {"status", "priority", "urgency", "ticket_type", "date_from"}
 
+CLOUDANT_TICKETS_DB  = "tickets"
+CLOUDANT_MESSAGES_DB = "messages"
+
 
 def utc_now():
     return datetime.now(timezone.utc)
@@ -79,7 +82,7 @@ class TicketRouter:
     }
 
     def __init__(self):
-        self.db_url          = os.getenv("DATABASE_URL")
+        self.db_url           = os.getenv("DATABASE_URL")
         self._memory_tickets  = []
         self._memory_messages = {}
 
@@ -113,7 +116,8 @@ class TicketRouter:
         industry = industry or self._load_business_industry(business_id)
         if industry and industry in TICKET_TYPES_BY_INDUSTRY:
             if ticket_type not in TICKET_TYPES_BY_INDUSTRY[industry]:
-                print(f"[ticket] unknown ticket_type '{ticket_type}' for {industry}, accepting anyway")
+                valid = ", ".join(sorted(TICKET_TYPES_BY_INDUSTRY[industry]))
+                raise ValueError(f"Invalid ticket_type '{ticket_type}' for {industry}. Valid values: {valid}")
 
         ticket = Ticket(
             business_id      = business_id,
@@ -141,6 +145,12 @@ class TicketRouter:
 
     def list_tickets(self, business_id: Optional[str] = None, filters: Optional[dict] = None) -> list:
         filters = self._clean_filters(filters or {})
+
+        if self._cloudant_available():
+            try:
+                return self._list_tickets_cloudant(business_id, filters)
+            except Exception as exc:
+                print(f"[cloudant] list_tickets failed: {exc}")
 
         if not self._db_available():
             tickets = self._memory_tickets
@@ -183,6 +193,12 @@ class TicketRouter:
             if conn: conn.close()
 
     def get_ticket(self, ticket_id: str) -> Optional[dict]:
+        if self._cloudant_available():
+            try:
+                return self._get_ticket_cloudant(ticket_id)
+            except Exception as exc:
+                print(f"[cloudant] get_ticket failed: {exc}")
+
         if not self._db_available():
             t = self._find_memory_ticket(ticket_id)
             return t.to_dict() if t else None
@@ -194,12 +210,16 @@ class TicketRouter:
             cur.execute("SELECT * FROM tickets WHERE id = %s", (ticket_id,))
             row = cur.fetchone()
             return self._serialize_row(row) if row else None
+        except Exception as exc:
+            print(f"[db] failed to get ticket: {exc}")
+            t = self._find_memory_ticket(ticket_id)
+            return t.to_dict() if t else None
         finally:
             if cur:  cur.close()
             if conn: conn.close()
 
     def update_ticket(self, ticket_id: str, updates: dict) -> Optional[dict]:
-        allowed      = {"status", "priority", "assigned_to"}
+        allowed       = {"status", "priority", "assigned_to"}
         clean_updates = {k: v for k, v in updates.items() if k in allowed}
         if not clean_updates:
             return self.get_ticket(ticket_id)
@@ -211,6 +231,12 @@ class TicketRouter:
 
         if clean_updates.get("status") == "resolved":
             return self.resolve_ticket(ticket_id, extra_updates=clean_updates)
+
+        if self._cloudant_available():
+            try:
+                return self._update_ticket_cloudant(ticket_id, clean_updates)
+            except Exception as exc:
+                print(f"[cloudant] update_ticket failed: {exc}")
 
         if not self._db_available():
             t = self._find_memory_ticket(ticket_id)
@@ -254,6 +280,12 @@ class TicketRouter:
 
     def resolve_ticket(self, ticket_id: str, extra_updates: Optional[dict] = None) -> Optional[dict]:
         updates = extra_updates or {}
+
+        if self._cloudant_available():
+            try:
+                return self._resolve_ticket_cloudant(ticket_id, updates)
+            except Exception as exc:
+                print(f"[cloudant] resolve_ticket failed: {exc}")
 
         if not self._db_available():
             t = self._find_memory_ticket(ticket_id)
@@ -303,6 +335,12 @@ class TicketRouter:
             if conn: conn.close()
 
     def list_messages(self, ticket_id: str) -> list:
+        if self._cloudant_available():
+            try:
+                return self._list_messages_cloudant(ticket_id)
+            except Exception as exc:
+                print(f"[cloudant] list_messages failed: {exc}")
+
         if not self._db_available():
             return [self._serialize_row(m) for m in self._memory_messages.get(ticket_id, [])]
 
@@ -315,6 +353,9 @@ class TicketRouter:
                 (ticket_id,),
             )
             return [self._serialize_row(row) for row in cur.fetchall()]
+        except Exception as exc:
+            print(f"[db] failed to list messages: {exc}")
+            return [self._serialize_row(m) for m in self._memory_messages.get(ticket_id, [])]
         finally:
             if cur:  cur.close()
             if conn: conn.close()
@@ -322,23 +363,130 @@ class TicketRouter:
     def ticket_to_dict(self, ticket: Ticket) -> dict:
         return ticket.to_dict()
 
+    # ── Cloudant backend ──────────────────────────────────────────────────────
+
+    def _cloudant_available(self) -> bool:
+        return bool(os.getenv("CLOUDANT_URL") and os.getenv("CLOUDANT_APIKEY"))
+
+    def _cloudant_client(self):
+        from ibmcloudant.cloudant_v1 import CloudantV1
+        from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
+        auth   = IAMAuthenticator(os.getenv("CLOUDANT_APIKEY"))
+        client = CloudantV1(authenticator=auth)
+        client.set_service_url(os.getenv("CLOUDANT_URL"))
+        return client
+
+    def _ensure_cloudant_db(self, client, db_name: str):
+        try:
+            client.put_database(db=db_name).get_result()
+        except Exception:
+            pass
+
+    def _save_ticket_cloudant(self, client, ticket: Ticket):
+        self._ensure_cloudant_db(client, CLOUDANT_TICKETS_DB)
+        doc = ticket.to_dict()
+        doc["_id"] = ticket.id
+        client.put_document(db=CLOUDANT_TICKETS_DB, doc_id=ticket.id, document=doc).get_result()
+        print(f"[cloudant] ticket saved: {ticket.id}")
+
+        if ticket.raw_message:
+            self._ensure_cloudant_db(client, CLOUDANT_MESSAGES_DB)
+            msg_id  = str(uuid.uuid4())
+            msg_doc = {
+                "_id":            msg_id,
+                "ticket_id":      ticket.id,
+                "business_id":    ticket.business_id,
+                "customer_phone": ticket.customer_phone,
+                "channel":        ticket.channel,
+                "direction":      "inbound",
+                "body":           ticket.raw_message,
+                "created_at":     format_datetime(ticket.created_at),
+            }
+            client.put_document(db=CLOUDANT_MESSAGES_DB, doc_id=msg_id, document=msg_doc).get_result()
+
+    def _list_tickets_cloudant(self, business_id: Optional[str], filters: dict) -> list:
+        client = self._cloudant_client()
+        self._ensure_cloudant_db(client, CLOUDANT_TICKETS_DB)
+
+        selector = {"_id": {"$gt": ""}}
+        if business_id:
+            selector["business_id"] = {"$eq": business_id}
+        for key, value in filters.items():
+            if key == "date_from":
+                selector["created_at"] = {"$gte": format_datetime(value)}
+            else:
+                selector[key] = {"$eq": value}
+
+        result = client.post_find(
+            db       = CLOUDANT_TICKETS_DB,
+            selector = selector,
+            sort     = [{"created_at": "desc"}],
+            limit    = 500,
+        ).get_result()
+        docs = result.get("docs", [])
+        return [{k: v for k, v in d.items() if not k.startswith("_")} for d in docs]
+
+    def _get_ticket_cloudant(self, ticket_id: str) -> Optional[dict]:
+        client = self._cloudant_client()
+        try:
+            doc = client.get_document(db=CLOUDANT_TICKETS_DB, doc_id=ticket_id).get_result()
+            return {k: v for k, v in doc.items() if not k.startswith("_")}
+        except Exception:
+            return None
+
+    def _update_ticket_cloudant(self, ticket_id: str, updates: dict) -> Optional[dict]:
+        client = self._cloudant_client()
+        try:
+            doc = client.get_document(db=CLOUDANT_TICKETS_DB, doc_id=ticket_id).get_result()
+        except Exception:
+            return None
+        doc.update(updates)
+        doc["updated_at"] = format_datetime(utc_now())
+        client.put_document(db=CLOUDANT_TICKETS_DB, doc_id=ticket_id, document=doc).get_result()
+        return {k: v for k, v in doc.items() if not k.startswith("_")}
+
+    def _resolve_ticket_cloudant(self, ticket_id: str, extra_updates: dict) -> Optional[dict]:
+        client = self._cloudant_client()
+        try:
+            doc = client.get_document(db=CLOUDANT_TICKETS_DB, doc_id=ticket_id).get_result()
+        except Exception:
+            return None
+        now_str = format_datetime(utc_now())
+        doc["status"]      = "resolved"
+        doc["updated_at"]  = now_str
+        doc["resolved_at"] = doc.get("resolved_at") or now_str
+        for k in ("priority", "assigned_to"):
+            if k in extra_updates:
+                doc[k] = extra_updates[k]
+        client.put_document(db=CLOUDANT_TICKETS_DB, doc_id=ticket_id, document=doc).get_result()
+        return {k: v for k, v in doc.items() if not k.startswith("_")}
+
+    def _list_messages_cloudant(self, ticket_id: str) -> list:
+        client = self._cloudant_client()
+        self._ensure_cloudant_db(client, CLOUDANT_MESSAGES_DB)
+        result = client.post_find(
+            db       = CLOUDANT_MESSAGES_DB,
+            selector = {"ticket_id": {"$eq": ticket_id}},
+            sort     = [{"created_at": "asc"}],
+            limit    = 200,
+        ).get_result()
+        docs = result.get("docs", [])
+        return [{k: v for k, v in d.items() if not k.startswith("_")} for d in docs]
+
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _save_ticket(self, ticket: Ticket):
+        if self._cloudant_available():
+            try:
+                client = self._cloudant_client()
+                self._save_ticket_cloudant(client, ticket)
+                return
+            except Exception as exc:
+                print(f"[cloudant] failed to save ticket: {exc}")
+
         if not self._db_available():
             self._memory_tickets.append(ticket)
-            self._memory_messages.setdefault(ticket.id, [])
-            if ticket.raw_message:
-                self._memory_messages[ticket.id].append({
-                    "id":             str(uuid.uuid4()),
-                    "business_id":    ticket.business_id,
-                    "ticket_id":      ticket.id,
-                    "customer_phone": ticket.customer_phone,
-                    "channel":        ticket.channel,
-                    "direction":      "inbound",
-                    "body":           ticket.raw_message,
-                    "created_at":     ticket.created_at,
-                })
+            self._save_memory_message(ticket)
             print(f"[db] no database — ticket kept in memory: {ticket.id}")
             return
 
@@ -362,14 +510,42 @@ class TicketRouter:
                     ticket.created_at, ticket.updated_at, ticket.resolved_at,
                 ),
             )
+            if ticket.raw_message:
+                msg_id = str(uuid.uuid4())
+                cur.execute(
+                    """
+                    INSERT INTO messages (id, ticket_id, business_id, customer_phone, channel,
+                        direction, body, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    """,
+                    (
+                        msg_id, ticket.id, ticket.business_id, ticket.customer_phone,
+                        ticket.channel, "inbound", ticket.raw_message, ticket.created_at,
+                    ),
+                )
             conn.commit()
             print(f"[db] ticket saved: {ticket.id}")
         except Exception as exc:
             print(f"[db] failed to save ticket: {exc}")
             self._memory_tickets.append(ticket)
+            self._save_memory_message(ticket)
         finally:
             if cur:  cur.close()
             if conn: conn.close()
+
+    def _save_memory_message(self, ticket: Ticket):
+        self._memory_messages.setdefault(ticket.id, [])
+        if ticket.raw_message:
+            self._memory_messages[ticket.id].append({
+                "id":             str(uuid.uuid4()),
+                "business_id":    ticket.business_id,
+                "ticket_id":      ticket.id,
+                "customer_phone": ticket.customer_phone,
+                "channel":        ticket.channel,
+                "direction":      "inbound",
+                "body":           ticket.raw_message,
+                "created_at":     format_datetime(ticket.created_at),
+            })
 
     def _db_available(self) -> bool:
         return bool(self.db_url and psycopg2 is not None)

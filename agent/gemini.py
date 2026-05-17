@@ -15,11 +15,14 @@ def log(msg):
 
 class GeminiLiveSession:
 
-    def __init__(self, business_profile: dict, on_transcript):
-        self.business_profile = business_profile
-        self.on_transcript    = on_transcript
-        self.transcript_parts = []
-        self.client           = None
+    def __init__(self, business_profile: dict, on_transcript,
+                 knowledge_chunks: list = None, customer_context: str = ""):
+        self.business_profile  = business_profile
+        self.on_transcript     = on_transcript
+        self.knowledge_chunks  = knowledge_chunks or []
+        self.customer_context  = customer_context
+        self.transcript_parts  = []
+        self.client            = None
 
         log(f"[gemini] init GEMINI_ENABLED={GEMINI_ENABLED}")
 
@@ -143,11 +146,20 @@ class GeminiLiveSession:
         hours     = self.business_profile.get("hours", {})
         hours_str = ", ".join(f"{k}: {v}" for k, v in hours.items())
 
-        return (
-            f"You are the voice assistant for {name}. "
-            f"Services offered: {services}. "
-            f"Business hours: {hours_str}. "
-            f"Collect the customer's name, issue description, and urgency. "
-            f"If this is an emergency, acknowledge it immediately and say a team member will contact them shortly. "
-            f"Keep responses brief. Ask only one question at a time."
-        )
+        parts = [
+            f"You are the voice assistant for {name}.",
+            f"Services offered: {services}.",
+            f"Business hours: {hours_str}.",
+            "Collect the customer's name, issue description, and urgency.",
+            "If this is an emergency, acknowledge it immediately and say a team member will contact them shortly.",
+            "Keep responses brief. Ask only one question at a time.",
+        ]
+
+        if self.customer_context:
+            parts.append(f"\nCUSTOMER CRM CONTEXT:\n{self.customer_context}")
+
+        if self.knowledge_chunks:
+            kb = "\n".join(f"- {c}" for c in self.knowledge_chunks[:8])
+            parts.append(f"\nKNOWLEDGE BASE:\n{kb}")
+
+        return " ".join(parts)

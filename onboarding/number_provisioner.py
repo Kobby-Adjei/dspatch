@@ -1,10 +1,7 @@
 import os
 from twilio.rest import Client
 
-FLASK_URL = os.getenv(
-    "FLASK_PUBLIC_URL",
-    "https://dspatch-flask.29wb2lul59qv.ca-tor.codeengine.appdomain.cloud",
-)
+FLASK_URL = os.getenv("FLASK_PUBLIC_URL", "")
 
 
 def _client() -> Client:
@@ -14,7 +11,11 @@ def _client() -> Client:
     auth_token  = os.getenv("TWILIO_AUTH_TOKEN")
 
     if api_key and api_secret:
+        if not account_sid:
+            raise RuntimeError("TWILIO_ACCOUNT_SID is required when using API key credentials")
         return Client(api_key, api_secret, account_sid)
+    if not account_sid or not auth_token:
+        raise RuntimeError("Twilio credentials are required")
     return Client(account_sid, auth_token)
 
 
@@ -31,6 +32,9 @@ def provision_number(business_id: str, area_code: str = None, country: str = "US
             "voice_url":    "https://.../voice",
         }
     """
+    if not FLASK_URL:
+        raise RuntimeError("FLASK_PUBLIC_URL is required but not set")
+
     client = _client()
 
     sms_url   = f"{FLASK_URL}/sms"
@@ -85,6 +89,8 @@ def release_number(phone_number_sid: str) -> None:
 
 def update_webhooks(phone_number_sid: str) -> None:
     """Re-points an existing number's webhooks at the current deployment URL."""
+    if not FLASK_URL:
+        raise RuntimeError("FLASK_PUBLIC_URL is required but not set")
     client = _client()
     client.incoming_phone_numbers(phone_number_sid).update(
         sms_url   = f"{FLASK_URL}/sms",

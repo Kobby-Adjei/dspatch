@@ -15,6 +15,7 @@ except ImportError:
 def _install_twilio_stub():
     voice_response = types.ModuleType("twilio.twiml.voice_response")
     messaging_response = types.ModuleType("twilio.twiml.messaging_response")
+    request_validator = types.ModuleType("twilio.request_validator")
 
     class VoiceResponse:
         def __init__(self):
@@ -22,6 +23,9 @@ def _install_twilio_stub():
 
         def append(self, child):
             self.children.append(child)
+
+        def say(self, body):
+            self.children.append(body)
 
         def __str__(self):
             return "<Response />"
@@ -37,6 +41,21 @@ def _install_twilio_stub():
         def __init__(self, url=None):
             self.url = url
 
+        def append(self, child):
+            pass
+
+    class Parameter:
+        def __init__(self, name=None, value=None):
+            self.name = name
+            self.value = value
+
+    class RequestValidator:
+        def __init__(self, auth_token):
+            self.auth_token = auth_token
+
+        def validate(self, url, params, signature):
+            return True
+
     class MessagingResponse:
         def __init__(self):
             self.messages = []
@@ -50,18 +69,21 @@ def _install_twilio_stub():
     voice_response.VoiceResponse = VoiceResponse
     voice_response.Connect = Connect
     voice_response.Stream = Stream
+    voice_response.Parameter = Parameter
     messaging_response.MessagingResponse = MessagingResponse
+    request_validator.RequestValidator = RequestValidator
 
     sys.modules.setdefault("twilio", types.ModuleType("twilio"))
     sys.modules.setdefault("twilio.twiml", types.ModuleType("twilio.twiml"))
     sys.modules["twilio.twiml.voice_response"] = voice_response
     sys.modules["twilio.twiml.messaging_response"] = messaging_response
+    sys.modules["twilio.request_validator"] = request_validator
 
 
 @unittest.skipIf(flask is None, "Flask is not installed")
 class TicketApiTest(unittest.TestCase):
     def setUp(self):
-        self.env = patch.dict(os.environ, {}, clear=True)
+        self.env = patch.dict(os.environ, {"JWT_SECRET": "test-secret-long-enough-for-hs256"}, clear=True)
         self.env.start()
         self.print_patch = patch("builtins.print")
         self.print_patch.start()
@@ -69,6 +91,7 @@ class TicketApiTest(unittest.TestCase):
         sys.modules.pop("agent.twilio_handler", None)
         self.module = importlib.import_module("agent.twilio_handler")
         self.module.ticket_router = self.module.TicketRouter()
+        self.auth_headers = {"Authorization": f"Bearer {self.module._create_token('detroit-plumbing-co')}"}
         self.client = self.module.app.test_client()
 
     def tearDown(self):
@@ -84,7 +107,7 @@ class TicketApiTest(unittest.TestCase):
             "raw_message": "My basement is flooding.",
         }
         payload.update(overrides)
-        return self.client.post("/businesses/detroit-plumbing-co/tickets", json=payload)
+        return self.client.post("/businesses/detroit-plumbing-co/tickets", json=payload, headers=self.auth_headers)
 
     def test_health_returns_json(self):
         response = self.client.get("/health")
@@ -105,6 +128,7 @@ class TicketApiTest(unittest.TestCase):
         response = self.client.post(
             "/businesses/detroit-plumbing-co/tickets",
             json={"customer_phone": "+13135550101"},
+            headers=self.auth_headers,
         )
         data = response.get_json()
 
@@ -124,7 +148,7 @@ class TicketApiTest(unittest.TestCase):
             raw_message="",
         )
 
-        response = self.client.get("/businesses/detroit-plumbing-co/tickets?urgency=emergency")
+        response = self.client.get("/businesses/detroit-plumbing-co/tickets?urgency=emergency", headers=self.auth_headers)
         data = response.get_json()
 
         self.assertEqual(response.status_code, 200)
@@ -141,7 +165,7 @@ class TicketApiTest(unittest.TestCase):
             raw_message="",
         )
 
-        response = self.client.get("/tickets?ticket_type=Appointment+Request")
+        response = self.client.get("/tickets?ticket_type=Appointment+Request", headers=self.auth_headers)
         data = response.get_json()
 
         self.assertEqual(response.status_code, 200)
@@ -154,6 +178,7 @@ class TicketApiTest(unittest.TestCase):
         response = self.client.patch(
             f"/tickets/{created['id']}",
             json={"status": "in_progress", "priority": "high", "assigned_to": "Ify"},
+            headers=self.auth_headers,
         )
         data = response.get_json()
 
@@ -168,6 +193,7 @@ class TicketApiTest(unittest.TestCase):
         response = self.client.patch(
             f"/tickets/{created['id']}",
             json={"ticket_type": "Appointment Request"},
+            headers=self.auth_headers,
         )
         data = response.get_json()
 
@@ -178,7 +204,7 @@ class TicketApiTest(unittest.TestCase):
     def test_resolve_ticket_returns_resolved_ticket(self):
         created = self._post_ticket().get_json()["ticket"]
 
-        response = self.client.post(f"/tickets/{created['id']}/resolve")
+        response = self.client.post(f"/tickets/{created['id']}/resolve", headers=self.auth_headers)
         data = response.get_json()
 
         self.assertEqual(response.status_code, 200)
@@ -188,7 +214,7 @@ class TicketApiTest(unittest.TestCase):
     def test_ticket_messages_returns_json(self):
         created = self._post_ticket().get_json()["ticket"]
 
-        response = self.client.get(f"/tickets/{created['id']}/messages")
+        response = self.client.get(f"/tickets/{created['id']}/messages", headers=self.auth_headers)
         data = response.get_json()
 
         self.assertEqual(response.status_code, 200)
@@ -196,10 +222,10 @@ class TicketApiTest(unittest.TestCase):
         self.assertEqual(data["messages"][0]["body"], "My basement is flooding.")
 
     def test_unknown_api_route_returns_json_404(self):
-        response = self.client.get("/tickets/not-found/messages")
+        response = self.client.get("/tickets/not-found/messages", headers=self.auth_headers)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json(), {"messages": [], "count": 0})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()["error"], "ticket not found")
 
         response = self.client.get("/missing")
         self.assertEqual(response.status_code, 404)

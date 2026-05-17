@@ -4,16 +4,16 @@
 
 set -e
 
-REGION="us-south"
-CE_PROJECT="dspatch"
+REGION="ca-tor"
+CE_PROJECT="watsonx-Hackathon Code Engine"
 API_KEY="${WATSONX_API_KEY:-$(grep WATSONX_API_KEY .env | cut -d= -f2)}"
 
 echo "[deploy] logging in..."
-ibmcloud login --apikey "$API_KEY" -r "$REGION" -q
+ibmcloud login --apikey "$API_KEY" -r "$REGION" -g Default -q
 
-echo "[deploy] installing plugins..."
-ibmcloud plugin install code-engine -f -q 2>/dev/null || true
-ibmcloud plugin install container-registry -f -q 2>/dev/null || true
+echo "[deploy] checking plugins..."
+ibmcloud plugin list | grep -q "code-engine"       || ibmcloud plugin install code-engine -f -q
+ibmcloud plugin list | grep -q "container-registry" || ibmcloud plugin install container-registry -f -q
 
 echo "[deploy] selecting/creating Code Engine project..."
 ibmcloud ce project select --name "$CE_PROJECT" 2>/dev/null || \
@@ -41,36 +41,53 @@ ibmcloud ce secret create --name dspatch-env \
   --from-literal TWILIO_API_SECRET="${TWILIO_API_SECRET}" \
   --from-literal TWILIO_VALIDATE_SIGNATURES="${TWILIO_VALIDATE_SIGNATURES}" \
   --from-literal FLASK_PUBLIC_URL="${FLASK_PUBLIC_URL}" \
-  --from-literal DEMO_BUSINESS_ID="${DEMO_BUSINESS_ID}"
+  --from-literal DEMO_BUSINESS_ID="${DEMO_BUSINESS_ID}" \
+  --from-literal WEBSOCKET_URL="wss://dspatch-ws.29wb2lul59qv.ca-tor.codeengine.appdomain.cloud" \
+  --from-literal JWT_SECRET="${JWT_SECRET}" \
+  --from-literal FRONTEND_ORIGIN="${FRONTEND_ORIGIN}" \
+  --from-literal HUBSPOT_CLIENT_ID="${HUBSPOT_CLIENT_ID}" \
+  --from-literal HUBSPOT_CLIENT_SECRET="${HUBSPOT_CLIENT_SECRET}" \
+  --from-literal SENDGRID_API_KEY="${SENDGRID_API_KEY}" \
+  --from-literal NOTIFY_FROM_EMAIL="${NOTIFY_FROM_EMAIL:-alerts@dspatch.ai}"
+
+IMAGE="docker.io/kobbyadu/dspatch:latest"
+
+# ── Build + push Docker image ─────────────────────────────────────────────────
+echo "[deploy] building Docker image..."
+docker build -t "$IMAGE" .
+
+echo "[deploy] pushing to Docker Hub..."
+docker push "$IMAGE"
 
 # ── Deploy Flask webhook server ───────────────────────────────────────────────
 echo "[deploy] deploying Flask app..."
 ibmcloud ce app create --name dspatch-flask \
-  --build-source . \
-  --strategy buildpacks \
+  --image "$IMAGE" \
   --port 5000 \
   --env-from-secret dspatch-env \
   --min-scale 1 \
   --max-scale 3 \
   2>/dev/null || \
 ibmcloud ce app update --name dspatch-flask \
-  --build-source . \
+  --image "$IMAGE" \
   --env-from-secret dspatch-env
 
 # ── Deploy WebSocket server ───────────────────────────────────────────────────
 echo "[deploy] deploying WebSocket server..."
 ibmcloud ce app create --name dspatch-ws \
-  --build-source . \
-  --strategy buildpacks \
+  --image "$IMAGE" \
   --port 8765 \
   --env-from-secret dspatch-env \
-  --env "CE_CMD=python agent/main.py" \
+  --command python \
+  --argument "agent/main.py" \
   --min-scale 1 \
   --max-scale 2 \
   2>/dev/null || \
 ibmcloud ce app update --name dspatch-ws \
-  --build-source . \
-  --env-from-secret dspatch-env
+  --image "$IMAGE" \
+  --env-from-secret dspatch-env \
+  --command python \
+  --argument "agent/main.py"
 
 # ── Print URLs ────────────────────────────────────────────────────────────────
 echo ""

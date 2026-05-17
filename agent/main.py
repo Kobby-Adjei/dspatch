@@ -65,6 +65,9 @@ async def transcript_to_record(transcript: str, business_profile: dict, customer
             channel        = "voice",
         )
         print(f"[ticket] voice ticket created: {ticket.id}")
+        if urgency == "emergency":
+            from agent.notifications import send_emergency_alert
+            send_emergency_alert(business_profile, ticket)
     except Exception as exc:
         print(f"[ticket] failed to create voice ticket: {exc}")
 
@@ -93,11 +96,8 @@ async def handle_call(websocket) -> None:
                 return
             yield chunk
 
-    async def on_transcript(text: str) -> None:
-        await transcript_to_record(text, business_profile, customer_phone)
-
-    session      = GeminiLiveSession(business_profile, on_transcript)
-    gemini_task  = None
+    session     = None
+    gemini_task = None
 
     async def run_gemini():
         async for audio_out in session.run(twilio_audio_stream()):
@@ -130,6 +130,29 @@ async def handle_call(websocket) -> None:
                 to_phone       = params.get("to_phone", "")
                 business_profile = _load_business_profile(to_phone)
                 log(f"[voice] call started sid={call_sid} business={business_profile.get('id')}")
+
+                knowledge_chunks = []
+                customer_context = ""
+                try:
+                    from agent.knowledge import search_chunks
+                    knowledge_chunks = search_chunks(business_profile["id"], "", top_k=6)
+                except Exception as ke:
+                    log(f"[voice] knowledge search skipped: {ke}")
+                try:
+                    from agent.integrations import lookup_customer
+                    customer_context = lookup_customer(business_profile, customer_phone) or ""
+                except Exception as ce:
+                    log(f"[voice] crm lookup skipped: {ce}")
+
+                async def on_transcript(text: str) -> None:
+                    await transcript_to_record(text, business_profile, customer_phone)
+
+                session     = GeminiLiveSession(
+                    business_profile,
+                    on_transcript,
+                    knowledge_chunks=knowledge_chunks,
+                    customer_context=customer_context,
+                )
                 gemini_task = asyncio.create_task(run_gemini())
 
             elif kind == "media":
