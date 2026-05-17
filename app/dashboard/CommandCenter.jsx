@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getAuth, clearAuth, authHeaders } from "../lib/auth";
+import { getAuth, saveAuth, clearAuth, authHeaders } from "../lib/auth";
 
 const POLL_MS  = 5000;
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ||
@@ -308,7 +308,7 @@ export default function CommandCenter() {
       const res = await fetch(`${API_BASE}/businesses/${biz}/knowledge`, { headers: authHeaders() });
       if (res.status === 401) { handleLogout(); return; }
       if (res.ok) setChunks((await res.json()).chunks || []);
-    } catch {}
+    } catch (e) { showToast(e.message || "Failed to load knowledge base", "error"); }
     finally { setKbLoading(false); }
   }, []);
 
@@ -319,7 +319,7 @@ export default function CommandCenter() {
       const res = await fetch(`${API_BASE}/businesses/${biz}/integrations`, { headers: authHeaders() });
       if (res.status === 401) { handleLogout(); return; }
       if (res.ok) setIntegrations((await res.json()) || {});
-    } catch {}
+    } catch (e) { showToast(e.message || "Failed to load integrations", "error"); }
     finally { setIntLoading(false); }
   }, []);
 
@@ -416,9 +416,7 @@ export default function CommandCenter() {
       if (!res.ok) throw new Error((await res.json()).error || "Save failed");
       const { business } = await res.json();
       const auth = getAuth();
-      if (auth) {
-        localStorage.setItem("dspatch_auth", JSON.stringify({ ...auth, business }));
-      }
+      if (auth) saveAuth(auth.token, business);
       showToast("Settings saved");
     } catch (e) { showToast(e.message, "error"); }
     finally { setSettingsSaving(false); }
