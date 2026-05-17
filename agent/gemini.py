@@ -1,6 +1,10 @@
 import os
-import audioop
 import asyncio
+
+try:
+    import audioop
+except ModuleNotFoundError:
+    audioop = None
 
 GEMINI_ENABLED = os.getenv("GEMINI_ENABLED", "false").strip().lower() in ("true", "1", "yes")
 
@@ -92,6 +96,8 @@ class GeminiLiveSession:
                 pass
             await self._simulate()
             return
+        if audioop is None:
+            raise RuntimeError("Gemini Live audio requires the audioop module or audioop-lts package")
 
         from google.genai import types
 
