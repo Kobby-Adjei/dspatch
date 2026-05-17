@@ -540,11 +540,10 @@ export default function OnboardFlow() {
   }
 
   async function submit() {
-    if (!values.name.trim())         { setError("Business name is required."); return; }
-    if (!values.industry)            { setError("Please select an industry."); return; }
-    if (values.services.length === 0){ setError("Select at least one service."); return; }
-    if (!values.email.trim())        { setError("Work email is required."); return; }
-    if (values.password.length < 8)  { setError("Password must be at least 8 characters."); return; }
+    if (!values.name.trim())        { setError("Business name is required."); return; }
+    if (!values.industry)           { setError("Please select an industry."); return; }
+    if (!values.email.trim())       { setError("Work email is required."); return; }
+    if (values.password.length < 8) { setError("Password must be at least 8 characters."); return; }
 
     setLoading(true);
     setError("");
