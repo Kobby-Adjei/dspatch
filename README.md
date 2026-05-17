@@ -196,6 +196,13 @@ Starts:
 python onboarding/business_setup.py
 ```
 
+By default this loads `onboarding/examples/demo-plumbing-co.json`. You can load another sample profile with:
+
+```bash
+python onboarding/business_setup.py onboarding/examples/demo-restaurant.json
+python onboarding/business_setup.py onboarding/examples/demo-boutique.json
+```
+
 ### 5. Configure Twilio webhook
 
 ```

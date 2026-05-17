@@ -1,0 +1,37 @@
+{
+  "id": "demo-boutique",
+  "name": "Woodward Boutique",
+  "industry": "retail",
+  "phone": "+13135550120",
+  "hours": {
+    "mon-sat": "10am-7pm",
+    "sun": "12pm-5pm"
+  },
+  "services": [
+    "Online order pickup",
+    "Product holds",
+    "Returns and exchanges",
+    "Personal styling"
+  ],
+  "pricing": [
+    "Local delivery starts at $8",
+    "Personal styling appointments are free",
+    "Returns accepted within 14 days"
+  ],
+  "service_area": ["Detroit", "Ferndale", "Royal Oak", "Southfield"],
+  "faqs": [
+    {
+      "question": "Can you hold an item?",
+      "answer": "Yes, items can be held until close of business the next day."
+    },
+    {
+      "question": "Do you accept exchanges?",
+      "answer": "Yes, unworn items with tags can be exchanged within 14 days."
+    }
+  ],
+  "routing_rules": {
+    "emergency_keywords": ["fraud", "stolen card", "unsafe product"],
+    "urgent_keywords": ["damaged", "missing", "wrong item", "refund", "exchange"],
+    "after_hours_action": "create urgent ticket"
+  }
+}

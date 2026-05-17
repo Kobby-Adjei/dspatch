@@ -1,0 +1,38 @@
+{
+  "id": "demo-plumbing-co",
+  "name": "Detroit Plumbing Co.",
+  "industry": "home_services",
+  "phone": "+13135550100",
+  "hours": {
+    "mon-fri": "8am-6pm",
+    "sat": "9am-3pm",
+    "sun": "closed"
+  },
+  "services": [
+    "Emergency plumbing",
+    "Drain cleaning",
+    "Water heater installation",
+    "Pipe repair"
+  ],
+  "pricing": [
+    "Emergency visit starts at $149",
+    "Drain cleaning starts at $99",
+    "Water heater installation starts at $450"
+  ],
+  "service_area": ["Detroit", "Dearborn", "Southfield", "Warren"],
+  "faqs": [
+    {
+      "question": "Do you offer emergency services?",
+      "answer": "Yes, 24/7 emergency service is available."
+    },
+    {
+      "question": "Do you serve Southfield?",
+      "answer": "Yes, we serve Southfield and surrounding areas."
+    }
+  ],
+  "routing_rules": {
+    "emergency_keywords": ["flood", "flooding", "burst pipe", "no heat", "no hot water", "gas leak"],
+    "urgent_keywords": ["broken", "not working", "leaking", "backed up", "clogged"],
+    "after_hours_action": "create urgent ticket"
+  }
+}

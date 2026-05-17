@@ -1,0 +1,38 @@
+{
+  "id": "demo-restaurant",
+  "name": "Corktown Table",
+  "industry": "hospitality",
+  "phone": "+13135550110",
+  "hours": {
+    "mon-thu": "11am-9pm",
+    "fri-sat": "11am-11pm",
+    "sun": "10am-3pm"
+  },
+  "services": [
+    "Dine-in reservations",
+    "Pickup orders",
+    "Delivery orders",
+    "Catering"
+  ],
+  "pricing": [
+    "Lunch entrees start at $14",
+    "Dinner entrees start at $22",
+    "Catering starts at $18 per person"
+  ],
+  "service_area": ["Detroit", "Corktown", "Midtown", "Downtown Detroit"],
+  "faqs": [
+    {
+      "question": "Do you take reservations?",
+      "answer": "Yes, reservations are available for parties of 2 to 12."
+    },
+    {
+      "question": "Do you offer catering?",
+      "answer": "Yes, catering is available with 48 hours notice."
+    }
+  ],
+  "routing_rules": {
+    "emergency_keywords": ["allergic reaction", "food poisoning", "medical emergency"],
+    "urgent_keywords": ["wrong order", "missing item", "late delivery", "refund", "complaint"],
+    "after_hours_action": "create urgent ticket"
+  }
+}
