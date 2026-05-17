@@ -16,14 +16,21 @@ from agent.gemini import GeminiLiveSession
 from agent.watsonx import classify_urgency, classify_ticket_type
 from ticketing.ticket_router import TicketRouter
 
-WEBSOCKET_PORT  = int(os.getenv("WEBSOCKET_PORT", "8765"))
-DEMO_BUSINESS_ID = os.getenv("DEMO_BUSINESS_ID", "detroit-plumbing-co")
+WEBSOCKET_PORT    = int(os.getenv("WEBSOCKET_PORT", "8765"))
+DEMO_BUSINESS_ID  = os.getenv("DEMO_BUSINESS_ID", "detroit-plumbing-co")
+FORCE_BUSINESS_ID = os.getenv("FORCE_BUSINESS_ID", "")
 
 ticket_router = TicketRouter()
 
 
 def _load_business_profile(to_phone: str = "") -> dict:
     from onboarding.business_store import find_by_phone, find_by_id
+
+    if FORCE_BUSINESS_ID:
+        profile = find_by_id(FORCE_BUSINESS_ID)
+        if profile:
+            log(f"[voice] FORCE_BUSINESS_ID active → {FORCE_BUSINESS_ID}")
+            return profile
 
     if to_phone:
         profile = find_by_phone(to_phone)
