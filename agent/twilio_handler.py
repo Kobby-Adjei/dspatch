@@ -20,9 +20,12 @@ from ticketing.ticket_router import TicketRouter
 
 app           = Flask(__name__)
 
-_cors_origin_env = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
-_cors_origins = [origin.strip() for origin in _cors_origin_env.split(",") if origin.strip()]
-CORS(app, origins=_cors_origins or ["http://localhost:3000"])
+_cors_origin_env = os.getenv("FRONTEND_ORIGIN", "*")
+if _cors_origin_env.strip() == "*":
+    CORS(app)
+else:
+    _cors_origins = [o.strip() for o in _cors_origin_env.split(",") if o.strip()]
+    CORS(app, origins=_cors_origins or ["http://localhost:3000"])
 ticket_router = TicketRouter()
 
 # Ensure Cloudant indexes exist for fast phone + email lookups
@@ -37,7 +40,6 @@ FLASK_PUBLIC_URL    = os.getenv("FLASK_PUBLIC_URL", "")
 JWT_SECRET          = os.getenv("JWT_SECRET", "")
 ADMIN_API_KEY       = os.getenv("ADMIN_API_KEY", "")
 _VALIDATE_TWILIO    = os.getenv("TWILIO_VALIDATE_SIGNATURES", "false").lower() == "true"
-_provisioning_enabled = os.getenv("PROVISIONING_ENABLED", "false").lower() == "true"
 
 
 def _require_admin(f):
@@ -213,23 +215,6 @@ def me():
     return jsonify({"business": profile_safe})
 
 
-@app.route("/admin/provisioning", methods=["GET"])
-@_require_admin
-def get_provisioning():
-    return jsonify({"provisioning_enabled": _provisioning_enabled})
-
-
-@app.route("/admin/provisioning", methods=["POST"])
-@_require_admin
-def set_provisioning():
-    global _provisioning_enabled
-    data = request.get_json(silent=True) or {}
-    if "enabled" not in data:
-        return jsonify({"error": "missing 'enabled' field"}), 400
-    _provisioning_enabled = bool(data["enabled"])
-    state = "enabled" if _provisioning_enabled else "disabled"
-    print(f"[admin] provisioning {state}")
-    return jsonify({"provisioning_enabled": _provisioning_enabled, "status": state})
 
 
 @app.route("/admin/force-business", methods=["GET"])
@@ -262,7 +247,7 @@ def set_force_business():
 def create_business():
     data = request.get_json(force=True, silent=True) or {}
 
-    required = ["name", "industry", "hours", "services", "email", "password"]
+    required = ["name", "industry", "email", "password"]
     missing  = [f for f in required if not data.get(f)]
     if missing:
         return jsonify({"error": f"Missing required fields: {missing}"}), 400
@@ -270,12 +255,16 @@ def create_business():
     valid_industries = ["home_services", "hospitality", "retail"]
     if data["industry"] not in valid_industries:
         return jsonify({"error": f"industry must be one of {valid_industries}"}), 400
-    if not isinstance(data.get("services"), list) or not all(isinstance(s, str) and s.strip() for s in data["services"]):
-        return jsonify({"error": "services must be a non-empty list of strings"}), 400
-    if not isinstance(data.get("hours"), dict):
-        return jsonify({"error": "hours must be an object"}), 400
     if len(data["password"]) < 8:
         return jsonify({"error": "password must be at least 8 characters"}), 400
+
+    _default_services = {
+        "home_services": ["Emergency service", "Appointment scheduling", "Quote requests"],
+        "hospitality":   ["Reservations", "Takeout orders", "Catering inquiries"],
+        "retail":        ["Product inquiries", "Order requests", "Returns & exchanges"],
+    }
+    services = data.get("services") or _default_services.get(data["industry"], ["General inquiries"])
+    hours    = data.get("hours") or {"mon-fri": "8am-6pm", "sat-sun": "9am-5pm"}
 
     email = data["email"].strip().lower()
     from onboarding.business_store import find_by_email
@@ -293,32 +282,38 @@ def create_business():
         "email":         email,
         "password_hash": password_hash,
         "industry":      data["industry"],
-        "hours":         data["hours"],
-        "services":      data["services"],
+        "hours":         hours,
+        "services":      services,
         "pricing":       data.get("pricing", []),
         "faqs":          data.get("faqs", []),
+        "ai_goals":      data.get("ai_goals", []),
         "routing_rules": data.get("routing_rules", {
             "emergency_keywords": ["flood", "flooding", "burst pipe", "no heat", "gas leak"],
             "urgent_keywords":    ["broken", "not working", "leaking", "backed up"],
         }),
     }
 
-    if _provisioning_enabled:
-        try:
-            from onboarding.number_provisioner import provision_number
-            result = provision_number(business_id, area_code=area_code)
-            profile["phone"]      = result["phone_number"]
-            profile["twilio_sid"] = result["sid"]
-            print(f"[signup] provisioned {result['phone_number']} for {business_id}")
-        except Exception as exc:
-            print(f"[signup] number provisioning failed: {exc}")
-            return jsonify({"error": "number provisioning failed", "detail": str(exc)}), 502
-    else:
-        profile["phone"] = None
-        print(f"[signup] provisioning disabled — {business_id} created without a phone number")
+    try:
+        from onboarding.number_provisioner import provision_number
+        result = provision_number(business_id, area_code=area_code)
+        profile["phone"]      = result["phone_number"]
+        profile["twilio_sid"] = result["sid"]
+        print(f"[signup] provisioned {result['phone_number']} for {business_id}")
+    except Exception as exc:
+        print(f"[signup] number provisioning failed: {exc}")
+        return jsonify({"error": "number provisioning failed", "detail": str(exc)}), 502
 
-    from onboarding.business_store import save_business
-    save_business(profile)
+    try:
+        from onboarding.business_store import save_business
+        save_business(profile)
+    except Exception as exc:
+        print(f"[signup] cloudant write failed, releasing number: {exc}")
+        try:
+            from onboarding.number_provisioner import release_number
+            release_number(profile["twilio_sid"])
+        except Exception:
+            pass
+        return jsonify({"error": "failed to save business — please try again"}), 500
 
     token        = _create_token(business_id)
     profile_safe = {k: v for k, v in profile.items() if k != "password_hash"}
@@ -442,7 +437,7 @@ def update_business(business_id):
     if scope_error:
         return scope_error
     data = request.get_json(silent=True) or {}
-    allowed = {"alert_phone", "hours", "name", "services"}
+    allowed = {"alert_phone", "hours", "name", "services", "ai_goals"}
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "no updatable fields provided"}), 400
@@ -453,7 +448,8 @@ def update_business(business_id):
             return jsonify({"error": "business not found"}), 404
         profile.update(updates)
         save_business(profile)
-        return jsonify({"ok": True, "business": profile})
+        profile_safe = {k: v for k, v in profile.items() if k not in ("password_hash", "_rev")}
+        return jsonify({"ok": True, "business": profile_safe})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

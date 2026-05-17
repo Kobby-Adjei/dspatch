@@ -117,7 +117,7 @@ async def handle_call(websocket) -> None:
             try:
                 await websocket.send(msg)
             except websockets.exceptions.ConnectionClosed:
-                break
+                pass  # keep draining so session.run() reaches on_transcript
 
     try:
         async for raw in websocket:
@@ -138,21 +138,28 @@ async def handle_call(websocket) -> None:
                 business_profile = _load_business_profile(to_phone)
                 log(f"[voice] call started sid={call_sid} business={business_profile.get('id')}")
 
-                knowledge_chunks = []
-                customer_context = ""
-                try:
-                    from agent.knowledge import search_chunks
-                    knowledge_chunks = search_chunks(business_profile["id"], "", top_k=6)
-                except Exception as ke:
-                    log(f"[voice] knowledge search skipped: {ke}")
-                try:
-                    from agent.integrations import lookup_customer
-                    customer_context = lookup_customer(business_profile, customer_phone) or ""
-                except Exception as ce:
-                    log(f"[voice] crm lookup skipped: {ce}")
-
                 async def on_transcript(text: str) -> None:
                     await transcript_to_record(text, business_profile, customer_phone)
+
+                # load knowledge + CRM in parallel — capped at 3s so slow Cloudant doesn't delay greeting
+                knowledge_chunks: list = []
+                customer_context: str  = ""
+                try:
+                    from agent.knowledge import search_chunks
+                    from agent.integrations import lookup_customer
+                    chunks, crm = await asyncio.wait_for(
+                        asyncio.gather(
+                            asyncio.to_thread(search_chunks, business_profile["id"], "", 6),
+                            asyncio.to_thread(lookup_customer, business_profile, customer_phone),
+                            return_exceptions=True,
+                        ),
+                        timeout=3.0,
+                    )
+                    knowledge_chunks = chunks if isinstance(chunks, list) else []
+                    customer_context = crm   if isinstance(crm,    str)  else ""
+                    log(f"[voice] context loaded: {len(knowledge_chunks)} chunks")
+                except Exception as e:
+                    log(f"[voice] context load skipped: {e}")
 
                 session     = GeminiLiveSession(
                     business_profile,
@@ -163,6 +170,8 @@ async def handle_call(websocket) -> None:
                 gemini_task = asyncio.create_task(run_gemini())
 
             elif kind == "media":
+                if session is None:
+                    continue  # drop pre-start audio; Gemini not connected yet
                 payload = event.get("media", {}).get("payload", "")
                 if payload:
                     audio_bytes = base64.b64decode(payload)
@@ -179,8 +188,9 @@ async def handle_call(websocket) -> None:
 
     if gemini_task:
         try:
-            await asyncio.wait_for(asyncio.shield(gemini_task), timeout=10)
+            await asyncio.wait_for(gemini_task, timeout=60)
         except asyncio.TimeoutError:
+            log(f"[voice] gemini task timed out after 60s — transcript/ticket may be lost")
             gemini_task.cancel()
             await asyncio.gather(gemini_task, return_exceptions=True)
 

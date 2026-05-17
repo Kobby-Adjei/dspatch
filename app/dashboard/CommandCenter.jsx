@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getAuth, clearAuth, authHeaders } from "../lib/auth";
+import { getAuth, saveAuth, clearAuth, authHeaders } from "../lib/auth";
 
 const POLL_MS  = 5000;
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ||
@@ -244,8 +244,14 @@ export default function CommandCenter() {
   const [kbSaving,    setKbSaving]   = useState(false);
 
   /* settings */
-  const [alertPhone,   setAlertPhone]   = useState("");
-  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [alertPhone,      setAlertPhone]      = useState("");
+  const [settingsSaving,  setSettingsSaving]  = useState(false);
+  const [editName,        setEditName]        = useState("");
+  const [weekdayHours,    setWeekdayHours]    = useState("");
+  const [weekendHours,    setWeekendHours]    = useState("");
+  const [services,        setServices]        = useState([]);
+  const [newService,      setNewService]      = useState("");
+  const [bizSaving,       setBizSaving]       = useState(false);
 
   /* integrations */
   const [integrations, setIntegrations] = useState({});
@@ -308,7 +314,7 @@ export default function CommandCenter() {
       const res = await fetch(`${API_BASE}/businesses/${biz}/knowledge`, { headers: authHeaders() });
       if (res.status === 401) { handleLogout(); return; }
       if (res.ok) setChunks((await res.json()).chunks || []);
-    } catch {}
+    } catch (e) { showToast(e.message || "Failed to load knowledge base", "error"); }
     finally { setKbLoading(false); }
   }, []);
 
@@ -319,7 +325,7 @@ export default function CommandCenter() {
       const res = await fetch(`${API_BASE}/businesses/${biz}/integrations`, { headers: authHeaders() });
       if (res.status === 401) { handleLogout(); return; }
       if (res.ok) setIntegrations((await res.json()) || {});
-    } catch {}
+    } catch (e) { showToast(e.message || "Failed to load integrations", "error"); }
     finally { setIntLoading(false); }
   }, []);
 
@@ -329,7 +335,12 @@ export default function CommandCenter() {
     if (navActive === "integrations") fetchIntegrations(bizId);
     if (navActive === "settings") {
       const auth = getAuth();
-      setAlertPhone(auth?.business?.alert_phone || "");
+      const biz  = auth?.business || {};
+      setAlertPhone(biz.alert_phone || "");
+      setEditName(biz.name || "");
+      setServices(biz.services || []);
+      setWeekdayHours(biz.hours?.["mon-fri"] || "8am – 6pm");
+      setWeekendHours(biz.hours?.["sat-sun"] || "9am – 5pm");
     }
   }, [navActive, bizId]);
 
@@ -416,12 +427,34 @@ export default function CommandCenter() {
       if (!res.ok) throw new Error((await res.json()).error || "Save failed");
       const { business } = await res.json();
       const auth = getAuth();
-      if (auth) {
-        localStorage.setItem("dspatch_auth", JSON.stringify({ ...auth, business }));
-      }
+      if (auth) saveAuth(auth.token, business);
       showToast("Settings saved");
     } catch (e) { showToast(e.message, "error"); }
     finally { setSettingsSaving(false); }
+  }
+
+  async function saveBizDetails() {
+    if (!editName.trim()) { showToast("Business name can't be empty", "error"); return; }
+    if (services.length === 0) { showToast("Add at least one service", "error"); return; }
+    setBizSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/businesses/${bizId}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body:    JSON.stringify({
+          name:     editName.trim(),
+          services: services,
+          hours:    { "mon-fri": weekdayHours.trim() || "8am-6pm", "sat-sun": weekendHours.trim() || "9am-5pm" },
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Save failed");
+      const { business } = await res.json();
+      const auth = getAuth();
+      if (auth) saveAuth(auth.token, business);
+      setBizName(business.name);
+      showToast("Business details saved");
+    } catch (e) { showToast(e.message, "error"); }
+    finally { setBizSaving(false); }
   }
 
   async function resolveTicket(id) {
@@ -886,6 +919,93 @@ export default function CommandCenter() {
             {navActive === "settings" && (
               <div className="space-y-4">
                 <h2 className="text-base font-black text-white">Settings</h2>
+
+                {/* Business Details */}
+                <div className="rounded-2xl bg-[#111111] p-5 space-y-4">
+                  <div>
+                    <p className="text-sm font-bold text-white">Business Details</p>
+                    <p className="text-[10px] text-[#444] mt-0.5">
+                      This is what your AI agent uses to introduce itself and answer questions.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#444]">Business name</label>
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Detroit Plumbing Co."
+                      className="block w-full rounded-xl bg-[#1a1a1a] px-4 py-2.5 text-sm text-[#ccc] placeholder-[#444] outline-none focus:bg-[#1f1f1f] transition-colors"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#444]">Services</label>
+                    <div className="flex flex-wrap gap-2">
+                      {services.map((s) => (
+                        <span key={s} className="flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs text-orange-200">
+                          {s}
+                          <button type="button" onClick={() => setServices(services.filter((x) => x !== s))}
+                            className="text-orange-400/60 hover:text-orange-300 leading-none">&times;</button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={newService}
+                        onChange={(e) => setNewService(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && newService.trim()) {
+                            e.preventDefault();
+                            if (!services.includes(newService.trim())) setServices([...services, newService.trim()]);
+                            setNewService("");
+                          }
+                        }}
+                        placeholder="Add a service…"
+                        className="flex-1 rounded-xl bg-[#1a1a1a] px-4 py-2.5 text-sm text-[#ccc] placeholder-[#444] outline-none focus:bg-[#1f1f1f] transition-colors"
+                      />
+                      <button type="button"
+                        onClick={() => {
+                          if (newService.trim() && !services.includes(newService.trim())) {
+                            setServices([...services, newService.trim()]);
+                            setNewService("");
+                          }
+                        }}
+                        className="rounded-xl bg-[#1a1a1a] px-4 py-2.5 text-xs font-bold text-[#555] hover:text-[#888] transition-colors">
+                        Add
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#444]">Mon – Fri</label>
+                      <input
+                        value={weekdayHours}
+                        onChange={(e) => setWeekdayHours(e.target.value)}
+                        placeholder="8am – 6pm"
+                        className="block w-full rounded-xl bg-[#1a1a1a] px-4 py-2.5 text-sm text-[#ccc] placeholder-[#444] outline-none focus:bg-[#1f1f1f] transition-colors"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#444]">Sat – Sun</label>
+                      <input
+                        value={weekendHours}
+                        onChange={(e) => setWeekendHours(e.target.value)}
+                        placeholder="9am – 5pm"
+                        className="block w-full rounded-xl bg-[#1a1a1a] px-4 py-2.5 text-sm text-[#ccc] placeholder-[#444] outline-none focus:bg-[#1f1f1f] transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={saveBizDetails}
+                    disabled={bizSaving}
+                    className="flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-xs font-bold text-white transition-opacity disabled:opacity-40"
+                  >
+                    {bizSaving ? <Spinner /> : null} Save details
+                  </button>
+                </div>
 
                 <div className="rounded-2xl bg-[#111111] p-5 space-y-4">
                   <div>
