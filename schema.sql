@@ -15,3 +15,12 @@ CREATE TABLE IF NOT EXISTS tickets (
     resolved_at      TIMESTAMPTZ,
     updated_at       TIMESTAMPTZ
 );
+
+CREATE INDEX IF NOT EXISTS idx_tickets_business_created_at
+    ON tickets (business_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_business_urgency_status
+    ON tickets (business_id, urgency, status);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_business_ticket_type
+    ON tickets (business_id, ticket_type);

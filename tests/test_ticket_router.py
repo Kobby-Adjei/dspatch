@@ -192,6 +192,14 @@ class TicketRouterTest(unittest.TestCase):
                 industry="retail",
             )
 
+    def test_invalid_industry_raises_clear_error(self):
+        with self.assertRaisesRegex(ValueError, "Invalid industry"):
+            create_demo_ticket(self.router, industry="healthcare")
+
+    def test_invalid_channel_raises_clear_error(self):
+        with self.assertRaisesRegex(ValueError, "Invalid channel"):
+            create_demo_ticket(self.router, channel="fax")
+
     def test_missing_required_field_raises_clear_error(self):
         with self.assertRaisesRegex(ValueError, "Missing required ticket field"):
             create_demo_ticket(self.router, customer_phone="")

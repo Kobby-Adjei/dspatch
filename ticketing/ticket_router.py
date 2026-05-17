@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -11,19 +12,20 @@ except ImportError:
     psycopg2 = None
     RealDictCursor = None
 
-
-TICKET_TYPES_BY_INDUSTRY = {
-    "home_services": {"Emergency Service", "Appointment Request", "Quote Request", "Status Update"},
-    "hospitality":   {"Reservation", "Food Order", "Complaint", "Catering Inquiry"},
-    "retail":        {"Product Inquiry", "Order Request", "Return Request", "Complaint"},
-}
-VALID_URGENCIES  = {"emergency", "urgent", "high", "medium", "low"}
-VALID_PRIORITIES = {"high", "medium", "low"}
-VALID_STATUSES   = {"open", "in_progress", "resolved"}
-FILTER_FIELDS    = {"status", "priority", "urgency", "ticket_type", "date_from"}
+from ticketing.contracts import (
+    FILTER_FIELDS,
+    SUGGESTED_ACTIONS,
+    TICKET_TYPES_BY_INDUSTRY,
+    URGENCY_TO_PRIORITY,
+    VALID_CHANNELS,
+    VALID_PRIORITIES,
+    VALID_STATUSES,
+    VALID_URGENCIES,
+)
 
 CLOUDANT_TICKETS_DB  = "tickets"
 CLOUDANT_MESSAGES_DB = "messages"
+logger = logging.getLogger(__name__)
 
 
 def utc_now():
@@ -65,22 +67,6 @@ class Ticket:
 class TicketRouter:
     """Creates, lists, and updates typed operational records."""
 
-    URGENCY_TO_PRIORITY = {
-        "emergency": "high",
-        "urgent":    "high",
-        "high":      "high",
-        "medium":    "medium",
-        "low":       "low",
-    }
-
-    SUGGESTED_ACTIONS = {
-        "emergency": "Immediate callback",
-        "urgent":    "Call back within 1 hour",
-        "high":      "Call back today",
-        "medium":    "Follow up within 24 hours",
-        "low":       "Respond during business hours",
-    }
-
     def __init__(self):
         self.db_url           = os.getenv("DATABASE_URL")
         self._memory_tickets  = []
@@ -100,6 +86,7 @@ class TicketRouter:
         assigned_to:      Optional[str] = None,
         industry:         Optional[str] = None,
     ) -> Ticket:
+        """Create a typed ticket with validated urgency, priority, channel, and industry-specific type."""
         self._validate_required({
             "business_id":    business_id,
             "customer_phone": customer_phone,
@@ -109,15 +96,14 @@ class TicketRouter:
             "urgency":        urgency,
         })
         self._validate_choice("urgency", urgency, VALID_URGENCIES)
+        self._validate_choice("channel", channel, VALID_CHANNELS)
 
-        priority = priority or self.URGENCY_TO_PRIORITY.get(urgency, self.classify_priority(issue_summary))
+        priority = priority or URGENCY_TO_PRIORITY.get(urgency, self.classify_priority(issue_summary))
         self._validate_choice("priority", priority, VALID_PRIORITIES)
 
         industry = industry or self._load_business_industry(business_id)
-        if industry and industry in TICKET_TYPES_BY_INDUSTRY:
-            if ticket_type not in TICKET_TYPES_BY_INDUSTRY[industry]:
-                valid = ", ".join(sorted(TICKET_TYPES_BY_INDUSTRY[industry]))
-                raise ValueError(f"Invalid ticket_type '{ticket_type}' for {industry}. Valid values: {valid}")
+        if industry:
+            self._validate_ticket_type(industry, ticket_type)
 
         ticket = Ticket(
             business_id      = business_id,
@@ -128,7 +114,7 @@ class TicketRouter:
             raw_message      = raw_message,
             urgency          = urgency,
             priority         = priority,
-            suggested_action = suggested_action or self.SUGGESTED_ACTIONS.get(urgency, "Follow up"),
+            suggested_action = suggested_action or SUGGESTED_ACTIONS.get(urgency, "Follow up"),
             assigned_to      = assigned_to,
         )
 
@@ -144,13 +130,14 @@ class TicketRouter:
         return "medium"
 
     def list_tickets(self, business_id: Optional[str] = None, filters: Optional[dict] = None) -> list:
+        """Return tickets for an optional business, filtered by queue fields used by the dashboard."""
         filters = self._clean_filters(filters or {})
 
         if self._cloudant_available():
             try:
                 return self._list_tickets_cloudant(business_id, filters)
             except Exception as exc:
-                print(f"[cloudant] list_tickets failed: {exc}")
+                logger.warning("[cloudant] list_tickets failed: %s", exc)
 
         if not self._db_available():
             tickets = self._memory_tickets
@@ -183,7 +170,7 @@ class TicketRouter:
             cur.execute(sql, params)
             return [self._serialize_row(row) for row in cur.fetchall()]
         except Exception as exc:
-            print(f"[db] failed to list tickets: {exc}")
+            logger.warning("[db] failed to list tickets: %s", exc)
             tickets = self._memory_tickets
             if business_id:
                 tickets = [t for t in tickets if t.business_id == business_id]
@@ -193,11 +180,12 @@ class TicketRouter:
             if conn: conn.close()
 
     def get_ticket(self, ticket_id: str) -> Optional[dict]:
+        """Return one ticket by id, or None when it does not exist."""
         if self._cloudant_available():
             try:
                 return self._get_ticket_cloudant(ticket_id)
             except Exception as exc:
-                print(f"[cloudant] get_ticket failed: {exc}")
+                logger.warning("[cloudant] get_ticket failed: %s", exc)
 
         if not self._db_available():
             t = self._find_memory_ticket(ticket_id)
@@ -211,7 +199,7 @@ class TicketRouter:
             row = cur.fetchone()
             return self._serialize_row(row) if row else None
         except Exception as exc:
-            print(f"[db] failed to get ticket: {exc}")
+            logger.warning("[db] failed to get ticket: %s", exc)
             t = self._find_memory_ticket(ticket_id)
             return t.to_dict() if t else None
         finally:
@@ -219,6 +207,7 @@ class TicketRouter:
             if conn: conn.close()
 
     def update_ticket(self, ticket_id: str, updates: dict) -> Optional[dict]:
+        """Apply editable ticket fields: status, priority, and assigned_to."""
         allowed       = {"status", "priority", "assigned_to"}
         clean_updates = {k: v for k, v in updates.items() if k in allowed}
         if not clean_updates:
@@ -236,7 +225,7 @@ class TicketRouter:
             try:
                 return self._update_ticket_cloudant(ticket_id, clean_updates)
             except Exception as exc:
-                print(f"[cloudant] update_ticket failed: {exc}")
+                logger.warning("[cloudant] update_ticket failed: %s", exc)
 
         if not self._db_available():
             t = self._find_memory_ticket(ticket_id)
@@ -263,7 +252,7 @@ class TicketRouter:
             conn.commit()
             return self._serialize_row(row) if row else None
         except Exception as exc:
-            print(f"[db] failed to update ticket: {exc}")
+            logger.warning("[db] failed to update ticket: %s", exc)
             t = self._find_memory_ticket(ticket_id)
             if not t:
                 return None
@@ -279,13 +268,14 @@ class TicketRouter:
         return self.update_ticket(ticket_id, {"status": status})
 
     def resolve_ticket(self, ticket_id: str, extra_updates: Optional[dict] = None) -> Optional[dict]:
+        """Mark a ticket resolved and preserve the first resolved_at timestamp."""
         updates = extra_updates or {}
 
         if self._cloudant_available():
             try:
                 return self._resolve_ticket_cloudant(ticket_id, updates)
             except Exception as exc:
-                print(f"[cloudant] resolve_ticket failed: {exc}")
+                logger.warning("[cloudant] resolve_ticket failed: %s", exc)
 
         if not self._db_available():
             t = self._find_memory_ticket(ticket_id)
@@ -322,7 +312,7 @@ class TicketRouter:
             conn.commit()
             return self._serialize_row(row) if row else None
         except Exception as exc:
-            print(f"[db] failed to resolve ticket: {exc}")
+            logger.warning("[db] failed to resolve ticket: %s", exc)
             t = self._find_memory_ticket(ticket_id)
             if not t:
                 return None
@@ -335,11 +325,12 @@ class TicketRouter:
             if conn: conn.close()
 
     def list_messages(self, ticket_id: str) -> list:
+        """Return inbound/outbound messages attached to a ticket."""
         if self._cloudant_available():
             try:
                 return self._list_messages_cloudant(ticket_id)
             except Exception as exc:
-                print(f"[cloudant] list_messages failed: {exc}")
+                logger.warning("[cloudant] list_messages failed: %s", exc)
 
         if not self._db_available():
             return [self._serialize_row(m) for m in self._memory_messages.get(ticket_id, [])]
@@ -354,7 +345,7 @@ class TicketRouter:
             )
             return [self._serialize_row(row) for row in cur.fetchall()]
         except Exception as exc:
-            print(f"[db] failed to list messages: {exc}")
+            logger.warning("[db] failed to list messages: %s", exc)
             return [self._serialize_row(m) for m in self._memory_messages.get(ticket_id, [])]
         finally:
             if cur:  cur.close()
@@ -379,15 +370,15 @@ class TicketRouter:
     def _ensure_cloudant_db(self, client, db_name: str):
         try:
             client.put_database(db=db_name).get_result()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.info("[cloudant] database ensure skipped for %s: %s", db_name, exc)
 
     def _save_ticket_cloudant(self, client, ticket: Ticket):
         self._ensure_cloudant_db(client, CLOUDANT_TICKETS_DB)
         doc = ticket.to_dict()
         doc["_id"] = ticket.id
         client.put_document(db=CLOUDANT_TICKETS_DB, doc_id=ticket.id, document=doc).get_result()
-        print(f"[cloudant] ticket saved: {ticket.id}")
+        logger.info("[cloudant] ticket saved: %s", ticket.id)
 
         if ticket.raw_message:
             self._ensure_cloudant_db(client, CLOUDANT_MESSAGES_DB)
@@ -482,12 +473,12 @@ class TicketRouter:
                 self._save_ticket_cloudant(client, ticket)
                 return
             except Exception as exc:
-                print(f"[cloudant] failed to save ticket: {exc}")
+                logger.warning("[cloudant] failed to save ticket: %s", exc)
 
         if not self._db_available():
             self._memory_tickets.append(ticket)
             self._save_memory_message(ticket)
-            print(f"[db] no database — ticket kept in memory: {ticket.id}")
+            logger.info("[db] no database; ticket kept in memory: %s", ticket.id)
             return
 
         conn = cur = None
@@ -524,9 +515,9 @@ class TicketRouter:
                     ),
                 )
             conn.commit()
-            print(f"[db] ticket saved: {ticket.id}")
+            logger.info("[db] ticket saved: %s", ticket.id)
         except Exception as exc:
-            print(f"[db] failed to save ticket: {exc}")
+            logger.warning("[db] failed to save ticket: %s", exc)
             self._memory_tickets.append(ticket)
             self._save_memory_message(ticket)
         finally:
@@ -560,7 +551,8 @@ class TicketRouter:
             cur.execute("SELECT industry FROM businesses WHERE id = %s", (business_id,))
             row = cur.fetchone()
             return row[0] if row else None
-        except Exception:
+        except Exception as exc:
+            logger.warning("[db] failed to load business industry: %s", exc)
             return None
         finally:
             if cur:  cur.close()
@@ -618,3 +610,13 @@ class TicketRouter:
         if value not in valid_values:
             valid = ", ".join(sorted(valid_values))
             raise ValueError(f"Invalid {field_name} '{value}'. Valid values: {valid}")
+
+    def _validate_ticket_type(self, industry: str, ticket_type: str):
+        if industry not in TICKET_TYPES_BY_INDUSTRY:
+            valid = ", ".join(sorted(TICKET_TYPES_BY_INDUSTRY))
+            raise ValueError(f"Invalid industry '{industry}'. Valid values: {valid}")
+
+        valid_types = TICKET_TYPES_BY_INDUSTRY[industry]
+        if ticket_type not in valid_types:
+            valid = ", ".join(sorted(valid_types))
+            raise ValueError(f"Invalid ticket_type '{ticket_type}' for {industry}. Valid values: {valid}")

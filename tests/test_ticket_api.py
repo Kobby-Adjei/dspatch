@@ -80,6 +80,19 @@ def _install_twilio_stub():
     sys.modules["twilio.request_validator"] = request_validator
 
 
+def _install_flask_cors_stub():
+    if "flask_cors" in sys.modules:
+        return
+
+    flask_cors = types.ModuleType("flask_cors")
+
+    def CORS(*args, **kwargs):
+        return None
+
+    flask_cors.CORS = CORS
+    sys.modules["flask_cors"] = flask_cors
+
+
 @unittest.skipIf(flask is None, "Flask is not installed")
 class TicketApiTest(unittest.TestCase):
     def setUp(self):
@@ -88,6 +101,7 @@ class TicketApiTest(unittest.TestCase):
         self.print_patch = patch("builtins.print")
         self.print_patch.start()
         _install_twilio_stub()
+        _install_flask_cors_stub()
         sys.modules.pop("agent.twilio_handler", None)
         self.module = importlib.import_module("agent.twilio_handler")
         self.module.ticket_router = self.module.TicketRouter()

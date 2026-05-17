@@ -39,3 +39,15 @@ create table if not exists messages (
   body            text not null,
   created_at      timestamptz not null default now()
 );
+
+create index if not exists idx_tickets_business_created_at
+  on tickets (business_id, created_at desc);
+
+create index if not exists idx_tickets_business_urgency_status
+  on tickets (business_id, urgency, status);
+
+create index if not exists idx_tickets_business_ticket_type
+  on tickets (business_id, ticket_type);
+
+create index if not exists idx_messages_ticket_created_at
+  on messages (ticket_id, created_at);
