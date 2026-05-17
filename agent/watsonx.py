@@ -95,11 +95,19 @@ def build_support_prompt(
     name = business_profile.get("name", "this business")
     context = "\n".join(str(chunk)[:1000] for chunk in (context_chunks or [])[:8] if chunk)
 
+    has_alert = bool(business_profile.get("alert_phone") or business_profile.get("email"))
+    emergency_line = (
+        "This is an EMERGENCY. A ticket has been created and the business owner is being alerted by SMS and email right now. "
+        "Tell the customer: 'We've logged your emergency and your team has been alerted immediately.'"
+        if has_alert else
+        "This is an EMERGENCY. Acknowledge it immediately. Tell them a team member will be notified right away."
+    )
+
     urgency_instruction = {
-        "emergency": "This is an EMERGENCY. Acknowledge it immediately. Tell them a team member will contact them shortly.",
-        "urgent":    "This is URGENT. Prioritize a fast response and offer to escalate.",
-        "high":      "The customer is frustrated. Acknowledge their frustration before answering.",
-        "medium":    "Handle this as a standard request.",
+        "emergency": emergency_line,
+        "urgent":    "This is URGENT. Acknowledge their urgency, confirm a ticket is logged, and offer to escalate.",
+        "high":      "The customer is frustrated. Acknowledge that first, then answer.",
+        "medium":    "Handle this as a standard support request. Confirm their ticket is logged.",
         "low":       "This is a general inquiry. Answer directly and briefly.",
     }.get(urgency, "Handle this as a standard request.")
 
