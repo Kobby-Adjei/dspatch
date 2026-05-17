@@ -4,6 +4,60 @@ import asyncio
 
 GEMINI_ENABLED = os.getenv("GEMINI_ENABLED", "false").strip().lower() in ("true", "1", "yes")
 
+GOAL_INSTRUCTIONS = {
+    # ── Home Services ─────────────────────────────────────────────────────────
+    "emergency_dispatch": (
+        "EMERGENCY DISPATCH: When a customer reports an emergency (flooding, burst pipe, no heat, gas leak), "
+        "say 'I'm logging this as an emergency right now.' Then collect their full address and a brief description of the issue."
+    ),
+    "appointment_booking": (
+        "APPOINTMENT BOOKING: When a customer wants to schedule service, collect: preferred date, "
+        "preferred time window (morning/afternoon/evening), full address, and what work is needed."
+    ),
+    "phone_quotes": (
+        "PHONE QUOTES: When asked about pricing, give a rough ballpark for the job type. "
+        "Always add: 'This is an estimate — a technician will confirm the exact price on-site.'"
+    ),
+    "after_hours": (
+        "AFTER-HOURS: If a customer contacts outside business hours, acknowledge the time, "
+        "confirm their request is logged, and tell them they'll be the first call when the team is back."
+    ),
+    # ── Hospitality ───────────────────────────────────────────────────────────
+    "reservations": (
+        "RESERVATIONS: When a customer wants to book, collect: name, party size, preferred date, "
+        "preferred time, and a contact phone number. Confirm you've noted the request."
+    ),
+    "takeout_orders": (
+        "TAKEOUT ORDERS: Help customers place orders. Collect each item with special instructions, "
+        "then confirm the full order and give an estimated pickup time."
+    ),
+    "menu_questions": (
+        "MENU & SPECIALS: Answer questions about menu items, daily specials, dietary options "
+        "(vegetarian, gluten-free, allergens), and pricing using your knowledge base."
+    ),
+    "complaint_handling": (
+        "COMPLAINTS: When a customer is unhappy, apologize sincerely first. Collect the full issue details. "
+        "Close with: 'A manager will personally follow up with you within 24 hours.'"
+    ),
+    # ── Retail ────────────────────────────────────────────────────────────────
+    "returns_exchanges": (
+        "RETURNS & EXCHANGES: Guide customers through the return or exchange process. "
+        "Collect: item name, reason for return, and whether they have a receipt or order number."
+    ),
+    "product_availability": (
+        "PRODUCT AVAILABILITY: Answer questions about stock, sizing, colors, and variants. "
+        "If you don't have specific inventory data, direct them to check the website or visit in store."
+    ),
+    "custom_orders": (
+        "CUSTOM ORDERS: For custom or special orders, collect: what they need, specifications, "
+        "timeline, and contact info. Tell them a team member will confirm details within 1 business day."
+    ),
+    "store_info": (
+        "STORE INFO: Answer questions about hours, location, parking, upcoming events, and policies "
+        "using your knowledge base."
+    ),
+}
+
 GEMINI_INPUT_RATE  = 16000
 GEMINI_OUTPUT_RATE = 24000
 TWILIO_RATE        = 8000
@@ -148,6 +202,9 @@ class GeminiLiveSession:
 
         has_alert = bool(self.business_profile.get("alert_phone") or self.business_profile.get("email"))
 
+        ai_goals = self.business_profile.get("ai_goals", [])
+        goal_blocks = [GOAL_INSTRUCTIONS[g] for g in ai_goals if g in GOAL_INSTRUCTIONS]
+
         parts = [
             f"You are the voice assistant for {name}.",
             f"Services: {services}." if services else "",
@@ -157,6 +214,9 @@ class GeminiLiveSession:
             "Ask one question at a time. Keep every response under 2 sentences.",
             "Do not make up information. If you don't know something, say you'll have someone follow up.",
         ]
+
+        if goal_blocks:
+            parts.append("\nAGENT CAPABILITIES — follow these precisely:\n" + "\n".join(goal_blocks))
 
         if has_alert:
             parts.append(

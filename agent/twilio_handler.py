@@ -282,6 +282,7 @@ def create_business():
         "services":      data["services"],
         "pricing":       data.get("pricing", []),
         "faqs":          data.get("faqs", []),
+        "ai_goals":      data.get("ai_goals", []),
         "routing_rules": data.get("routing_rules", {
             "emergency_keywords": ["flood", "flooding", "burst pipe", "no heat", "gas leak"],
             "urgent_keywords":    ["broken", "not working", "leaking", "backed up"],
@@ -423,7 +424,7 @@ def update_business(business_id):
     if scope_error:
         return scope_error
     data = request.get_json(silent=True) or {}
-    allowed = {"alert_phone", "hours", "name", "services"}
+    allowed = {"alert_phone", "hours", "name", "services", "ai_goals"}
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "no updatable fields provided"}), 400

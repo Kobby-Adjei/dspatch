@@ -8,7 +8,28 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   "https://dspatch-flask.29wb2lul59qv.ca-tor.codeengine.appdomain.cloud";
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
+
+const INDUSTRY_GOALS = {
+  home_services: [
+    { key: "emergency_dispatch",  label: "Dispatch emergency jobs",  sub: "Flood · burst pipe · no heat" },
+    { key: "appointment_booking", label: "Book appointments",         sub: "Date · time · address" },
+    { key: "phone_quotes",        label: "Give phone quotes",          sub: "Estimates with on-site caveat" },
+    { key: "after_hours",         label: "Handle after-hours calls",  sub: "Log and reassure callers" },
+  ],
+  hospitality: [
+    { key: "reservations",        label: "Take reservations",         sub: "Name · party size · date · time" },
+    { key: "takeout_orders",      label: "Take takeout orders",       sub: "Items · instructions · pickup time" },
+    { key: "menu_questions",      label: "Answer menu questions",     sub: "Specials · dietary · pricing" },
+    { key: "complaint_handling",  label: "Handle complaints",         sub: "Escalate to manager in 24 h" },
+  ],
+  retail: [
+    { key: "returns_exchanges",   label: "Handle returns & exchanges", sub: "Order details · reason" },
+    { key: "product_availability",label: "Answer product questions",  sub: "Stock · sizing · colors" },
+    { key: "custom_orders",       label: "Take custom orders",        sub: "Specs · timeline · contact" },
+    { key: "store_info",          label: "Answer store info",         sub: "Hours · location · events" },
+  ],
+};
 
 const INDUSTRIES = [
   {
@@ -121,7 +142,7 @@ function StepIndustry({ values, onChange, onNext }) {
   return (
     <div className="mx-auto w-full max-w-[560px] px-6">
       <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-orange-400">
-        Step 01 of 03
+        Step 01 of 04
       </p>
       <h2 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight md:text-5xl">
         What kind of business<br />do you run?
@@ -227,7 +248,7 @@ function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
   return (
     <div className="mx-auto w-full max-w-[560px] px-6">
       <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-orange-400">
-        Step 02 of 03
+        Step 02 of 04
       </p>
       <h2 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight md:text-5xl">
         About your business.
@@ -403,6 +424,88 @@ function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
           disabled={loading || !canSubmit}
           className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-4 text-sm font-black text-black transition-all duration-150 hover:bg-orange-50 active:scale-[0.98] disabled:opacity-25 disabled:cursor-not-allowed"
         >
+          Continue <IconArrow />
+        </button>
+        <button
+          onClick={onBack}
+          disabled={loading}
+          className="w-full rounded-full border border-white/8 py-3.5 text-sm font-semibold text-white/30 transition-all duration-150 hover:border-white/15 hover:text-white/60 active:scale-[0.98]"
+        >
+          Back
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/* ── Step 3 — AI Goals ───────────────────────────────────────────────────────*/
+
+function StepGoals({ values, onChange, onBack, onSubmit, loading, error }) {
+  const goals = INDUSTRY_GOALS[values.industry] || [];
+  const selected = values.aiGoals;
+
+  function toggle(key) {
+    onChange("aiGoals", selected.includes(key)
+      ? selected.filter((k) => k !== key)
+      : [...selected, key]
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-[560px] px-6">
+      <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-orange-400">
+        Step 03 of 04
+      </p>
+      <h2 className="mt-4 text-4xl font-black leading-[1.05] tracking-tight md:text-5xl">
+        What should your<br />AI handle?
+      </h2>
+      <p className="mt-4 text-sm leading-relaxed text-white/40">
+        Pick everything you want your agent to do. It'll follow exact steps for each one.
+      </p>
+
+      <div className="mt-10 grid gap-3">
+        {goals.map(({ key, label, sub }) => {
+          const on = selected.includes(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggle(key)}
+              className={`flex items-center justify-between rounded-2xl border px-5 py-4 text-left transition-all duration-150 active:scale-[0.98] ${
+                on
+                  ? "border-orange-500/50 bg-orange-500/8 shadow-[0_0_0_1px_rgba(249,115,22,0.2)]"
+                  : "border-white/10 bg-white/[0.03] hover:border-white/20"
+              }`}
+            >
+              <div>
+                <p className={`text-sm font-bold transition-colors ${on ? "text-white" : "text-white/60"}`}>
+                  {label}
+                </p>
+                <p className="mt-0.5 text-[11px] text-white/25">{sub}</p>
+              </div>
+              <div className={`ml-4 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-all ${
+                on ? "border-orange-500 bg-orange-500" : "border-white/15"
+              }`}>
+                {on && <IconCheck />}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {error && (
+        <p className="mt-5 rounded-xl border border-orange-500/20 bg-orange-500/8 px-4 py-3 text-xs font-semibold text-orange-300">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-8 grid gap-3">
+        <button
+          onClick={onSubmit}
+          disabled={loading || selected.length === 0}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-4 text-sm font-black text-black transition-all duration-150 hover:bg-orange-50 active:scale-[0.98] disabled:opacity-25 disabled:cursor-not-allowed"
+        >
           Launch my AI agent <IconArrow />
         </button>
         <button
@@ -418,7 +521,7 @@ function StepDetails({ values, onChange, onBack, onSubmit, loading, error }) {
 }
 
 
-/* ── Step 3 — Success ────────────────────────────────────────────────────────*/
+/* ── Step 4 — Success ────────────────────────────────────────────────────────*/
 
 function StepSuccess({ result, businessName }) {
   const [copied, setCopied] = useState(false);
@@ -538,6 +641,7 @@ export default function OnboardFlow() {
     email:      "",
     password:   "",
     alertPhone: "",
+    aiGoals:    [],
   });
 
   function change(key, val) {
@@ -570,6 +674,7 @@ export default function OnboardFlow() {
           hours:    { "mon-fri": values.weekday || "8am – 6pm", "sat-sun": values.weekend || "Closed" },
           email:    values.email.trim().toLowerCase(),
           password: values.password,
+          ai_goals: values.aiGoals,
           ...(values.areaCode.trim()   && { area_code:   values.areaCode.trim() }),
           ...(values.alertPhone.trim() && { alert_phone: values.alertPhone.trim() }),
         }),
@@ -578,7 +683,7 @@ export default function OnboardFlow() {
       if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
       saveAuth(data.token, data.business);
       setResult(data.business);
-      goTo(3);
+      goTo(4);
     } catch (err) {
       if (err.name === "TypeError" && err.message.includes("fetch")) {
         setError("Could not reach the server. Make sure the backend is running.");
@@ -590,7 +695,7 @@ export default function OnboardFlow() {
     }
   }
 
-  const animClass = step === 3 ? "step-success" : dir === "back" ? "step-back" : "step-forward";
+  const animClass = step === 4 ? "step-success" : dir === "back" ? "step-back" : "step-forward";
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -631,12 +736,22 @@ export default function OnboardFlow() {
               values={values}
               onChange={change}
               onBack={() => goTo(1, "back")}
+              onSubmit={() => goTo(3)}
+              loading={false}
+              error=""
+            />
+          )}
+          {step === 3 && (
+            <StepGoals
+              values={values}
+              onChange={change}
+              onBack={() => goTo(2, "back")}
               onSubmit={submit}
               loading={loading}
               error={error}
             />
           )}
-          {step === 3 && result && (
+          {step === 4 && result && (
             <StepSuccess result={result} businessName={values.name} />
           )}
         </div>
