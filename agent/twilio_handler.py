@@ -32,10 +32,23 @@ try:
 except Exception as _idx_err:
     print(f"[startup] index setup skipped: {_idx_err}")
 
-DEMO_BUSINESS_ID = os.getenv("DEMO_BUSINESS_ID", "detroit-plumbing-co")
-FLASK_PUBLIC_URL = os.getenv("FLASK_PUBLIC_URL", "")
-JWT_SECRET       = os.getenv("JWT_SECRET", "")
-_VALIDATE_TWILIO = os.getenv("TWILIO_VALIDATE_SIGNATURES", "false").lower() == "true"
+DEMO_BUSINESS_ID    = os.getenv("DEMO_BUSINESS_ID", "detroit-plumbing-co")
+FLASK_PUBLIC_URL    = os.getenv("FLASK_PUBLIC_URL", "")
+JWT_SECRET          = os.getenv("JWT_SECRET", "")
+ADMIN_API_KEY       = os.getenv("ADMIN_API_KEY", "")
+_VALIDATE_TWILIO    = os.getenv("TWILIO_VALIDATE_SIGNATURES", "false").lower() == "true"
+_provisioning_enabled = os.getenv("PROVISIONING_ENABLED", "false").lower() == "true"
+
+
+def _require_admin(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not ADMIN_API_KEY:
+            return jsonify({"error": "admin API key not configured"}), 503
+        if request.headers.get("X-Admin-Key", "") != ADMIN_API_KEY:
+            return jsonify({"error": "invalid admin key"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -190,6 +203,25 @@ def me():
     return jsonify({"business": profile_safe})
 
 
+@app.route("/admin/provisioning", methods=["GET"])
+@_require_admin
+def get_provisioning():
+    return jsonify({"provisioning_enabled": _provisioning_enabled})
+
+
+@app.route("/admin/provisioning", methods=["POST"])
+@_require_admin
+def set_provisioning():
+    global _provisioning_enabled
+    data = request.get_json(silent=True) or {}
+    if "enabled" not in data:
+        return jsonify({"error": "missing 'enabled' field"}), 400
+    _provisioning_enabled = bool(data["enabled"])
+    state = "enabled" if _provisioning_enabled else "disabled"
+    print(f"[admin] provisioning {state}")
+    return jsonify({"provisioning_enabled": _provisioning_enabled, "status": state})
+
+
 @app.route("/businesses", methods=["POST"])
 def create_business():
     data = request.get_json(force=True, silent=True) or {}
@@ -235,15 +267,19 @@ def create_business():
         }),
     }
 
-    try:
-        from onboarding.number_provisioner import provision_number
-        result             = provision_number(business_id, area_code=area_code)
-        profile["phone"]       = result["phone_number"]
-        profile["twilio_sid"]  = result["sid"]
-        print(f"[signup] provisioned {result['phone_number']} for {business_id}")
-    except Exception as exc:
-        print(f"[signup] number provisioning failed: {exc}")
-        return jsonify({"error": "number provisioning failed", "detail": str(exc)}), 502
+    if _provisioning_enabled:
+        try:
+            from onboarding.number_provisioner import provision_number
+            result = provision_number(business_id, area_code=area_code)
+            profile["phone"]      = result["phone_number"]
+            profile["twilio_sid"] = result["sid"]
+            print(f"[signup] provisioned {result['phone_number']} for {business_id}")
+        except Exception as exc:
+            print(f"[signup] number provisioning failed: {exc}")
+            return jsonify({"error": "number provisioning failed", "detail": str(exc)}), 502
+    else:
+        profile["phone"] = None
+        print(f"[signup] provisioning disabled — {business_id} created without a phone number")
 
     from onboarding.business_store import save_business
     save_business(profile)
