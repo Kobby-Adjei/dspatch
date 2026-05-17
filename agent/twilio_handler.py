@@ -232,6 +232,32 @@ def set_provisioning():
     return jsonify({"provisioning_enabled": _provisioning_enabled, "status": state})
 
 
+@app.route("/admin/force-business", methods=["GET"])
+@_require_admin
+def get_force_business():
+    return jsonify({"force_business_id": FORCE_BUSINESS_ID})
+
+
+@app.route("/admin/force-business", methods=["POST"])
+@_require_admin
+def set_force_business():
+    global FORCE_BUSINESS_ID
+    data = request.get_json(silent=True) or {}
+    biz_id = data.get("business_id", "").strip()
+    if biz_id:
+        from onboarding.business_store import find_by_id
+        profile = find_by_id(biz_id)
+        if not profile:
+            return jsonify({"error": f"business '{biz_id}' not found"}), 404
+        FORCE_BUSINESS_ID = biz_id
+        print(f"[admin] forcing all traffic → {biz_id} ({profile.get('name')})")
+        return jsonify({"force_business_id": FORCE_BUSINESS_ID, "name": profile.get("name"), "phone": profile.get("phone")})
+    else:
+        FORCE_BUSINESS_ID = ""
+        print("[admin] force-business cleared — back to multi-tenant routing")
+        return jsonify({"force_business_id": "", "status": "multi-tenant routing restored"})
+
+
 @app.route("/businesses", methods=["POST"])
 def create_business():
     data = request.get_json(force=True, silent=True) or {}
