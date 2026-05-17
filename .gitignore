@@ -236,3 +236,4 @@ dmypy.json
 /data/
 /uploads/
 .vercel
+app/.env.local
