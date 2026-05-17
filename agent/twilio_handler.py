@@ -400,6 +400,19 @@ def list_business_tickets(business_id):
     return jsonify({"tickets": tickets, "count": len(tickets)})
 
 
+@app.route("/businesses/<business_id>/dashboard-summary", methods=["GET"])
+@require_auth
+def dashboard_summary(business_id):
+    scope_error = _check_business_scope(business_id)
+    if scope_error:
+        return scope_error
+    try:
+        tickets = ticket_router.list_tickets(business_id=g.business_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(_build_dashboard_summary(g.business_id, tickets))
+
+
 @app.route("/tickets", methods=["GET"])
 @require_auth
 def list_all_tickets():
@@ -498,6 +511,58 @@ def list_ticket_messages(ticket_id):
 
     messages = ticket_router.list_messages(ticket_id)
     return jsonify({"messages": messages, "count": len(messages)})
+
+
+def _build_dashboard_summary(business_id: str, tickets: list[dict]) -> dict:
+    today = datetime.now(timezone.utc).date()
+
+    emergency_open = [
+        ticket for ticket in tickets
+        if ticket.get("urgency") == "emergency" and ticket.get("status") == "open"
+    ]
+    open_tickets = [ticket for ticket in tickets if ticket.get("status") == "open"]
+    resolved_today = [
+        ticket for ticket in tickets
+        if ticket.get("status") == "resolved" and _ticket_date(ticket.get("resolved_at")) == today
+    ]
+    appointment_requests = [
+        ticket for ticket in tickets
+        if ticket.get("ticket_type") == "Appointment Request"
+    ]
+
+    return {
+        "business_id": business_id,
+        "counts": {
+            "total": len(tickets),
+            "emergency_queue": len(emergency_open),
+            "open": len(open_tickets),
+            "resolved_today": len(resolved_today),
+            "appointment_requests": len(appointment_requests),
+        },
+        "by_priority": _count_by(tickets, "priority"),
+        "by_status": _count_by(tickets, "status"),
+        "by_ticket_type": _count_by(tickets, "ticket_type"),
+    }
+
+
+def _count_by(tickets: list[dict], field: str) -> dict:
+    counts = {}
+    for ticket in tickets:
+        value = ticket.get(field) or "unknown"
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def _ticket_date(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).date()
 
 
 # ── Knowledge base ───────────────────────────────────────────────────────────

@@ -186,6 +186,38 @@ class TicketApiTest(unittest.TestCase):
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["tickets"][0]["ticket_type"], "Appointment Request")
 
+    def test_dashboard_summary_returns_command_center_counts(self):
+        emergency = self._post_ticket().get_json()["ticket"]
+        self._post_ticket(
+            customer_phone="+13135550102",
+            issue_summary="Can I schedule a visit?",
+            ticket_type="Appointment Request",
+            urgency="medium",
+            raw_message="",
+        )
+        self.client.post(f"/tickets/{emergency['id']}/resolve", headers=self.auth_headers)
+
+        response = self.client.get("/businesses/detroit-plumbing-co/dashboard-summary", headers=self.auth_headers)
+        data = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["business_id"], "detroit-plumbing-co")
+        self.assertEqual(data["counts"]["total"], 2)
+        self.assertEqual(data["counts"]["emergency_queue"], 0)
+        self.assertEqual(data["counts"]["open"], 1)
+        self.assertEqual(data["counts"]["resolved_today"], 1)
+        self.assertEqual(data["counts"]["appointment_requests"], 1)
+        self.assertEqual(data["by_status"], {"resolved": 1, "open": 1})
+        self.assertEqual(data["by_priority"], {"high": 1, "medium": 1})
+        self.assertEqual(data["by_ticket_type"]["Emergency Service"], 1)
+        self.assertEqual(data["by_ticket_type"]["Appointment Request"], 1)
+
+    def test_dashboard_summary_requires_matching_business_scope(self):
+        response = self.client.get("/businesses/demo-restaurant/dashboard-summary", headers=self.auth_headers)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], "business_id does not match authenticated business")
+
     def test_patch_ticket_accepts_status_priority_and_assigned_to(self):
         created = self._post_ticket().get_json()["ticket"]
 
