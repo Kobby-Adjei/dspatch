@@ -146,20 +146,37 @@ class GeminiLiveSession:
         hours     = self.business_profile.get("hours", {})
         hours_str = ", ".join(f"{k}: {v}" for k, v in hours.items())
 
+        has_alert = bool(self.business_profile.get("alert_phone") or self.business_profile.get("email"))
+
         parts = [
             f"You are the voice assistant for {name}.",
-            f"Services offered: {services}.",
-            f"Business hours: {hours_str}.",
-            "Collect the customer's name, issue description, and urgency.",
-            "If this is an emergency, acknowledge it immediately and say a team member will contact them shortly.",
-            "Keep responses brief. Ask only one question at a time.",
+            f"Services: {services}." if services else "",
+            f"Business hours: {hours_str}." if hours_str else "",
+            "Your job: greet the caller warmly, understand their issue, and log a support ticket.",
+            "Always ask for the caller's name first if you don't already know it.",
+            "Ask one question at a time. Keep every response under 2 sentences.",
+            "Do not make up information. If you don't know something, say you'll have someone follow up.",
         ]
 
+        if has_alert:
+            parts.append(
+                "EMERGENCY PROTOCOL: If the caller describes an emergency, "
+                "tell them clearly: 'I've created an emergency ticket and your team is being alerted right now.' "
+                "Do not say 'will contact shortly' — the alert fires immediately."
+            )
+        else:
+            parts.append(
+                "EMERGENCY PROTOCOL: If the caller describes an emergency, "
+                "acknowledge it immediately and tell them a team member will be notified."
+            )
+
         if self.customer_context:
-            parts.append(f"\nCUSTOMER CRM CONTEXT:\n{self.customer_context}")
+            parts.append(f"\nCALLER HISTORY (from CRM — use naturally, do not read aloud):\n{self.customer_context}")
 
         if self.knowledge_chunks:
             kb = "\n".join(f"- {c}" for c in self.knowledge_chunks[:8])
-            parts.append(f"\nKNOWLEDGE BASE:\n{kb}")
+            parts.append(
+                f"\nBUSINESS KNOWLEDGE (use to answer questions accurately — do not recite verbatim):\n{kb}"
+            )
 
-        return " ".join(parts)
+        return "\n".join(p for p in parts if p)
