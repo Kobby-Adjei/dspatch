@@ -1,0 +1,32 @@
+{
+  "id": "test-cafe-20cb237f",
+  "name": "Test Cafe",
+  "industry": "hospitality",
+  "hours": {
+    "mon-fri": "9am-9pm",
+    "sat-sun": "10am-8pm"
+  },
+  "services": [
+    "Reservations",
+    "Takeout orders"
+  ],
+  "pricing": [],
+  "faqs": [],
+  "routing_rules": {
+    "emergency_keywords": [
+      "flood",
+      "flooding",
+      "burst pipe",
+      "no heat",
+      "gas leak"
+    ],
+    "urgent_keywords": [
+      "broken",
+      "not working",
+      "leaking",
+      "backed up"
+    ]
+  },
+  "phone": "+19784806603",
+  "twilio_sid": "PN96da0b8f81a1a283f9b1fdc1ae12999f"
+}

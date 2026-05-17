@@ -1,4 +1,6 @@
+import Link from "next/link";
 import LoopingSplineFrame from "./LoopingSplineFrame";
+import OnboardingCTA from "./OnboardingCTA";
 
 const heroSplineUrl = "https://my.spline.design/webdiagram-78ofgCvL78UwRylv2OO3z6iN/";
 const operatorSplineUrl = "https://my.spline.design/3dcarouselcopycopy-D4KYyXWCIWWQHZAcyQOqOjU0-49i/";
@@ -34,12 +36,12 @@ function Nav() {
           <a href="#mission" className="hover:text-orange-100">Mission Control</a>
         </div>
 
-        <a
-          href="#cta"
-          className="hidden rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black hover:bg-orange-100 sm:inline-flex"
+        <Link
+          href="/onboard"
+          className="hidden rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-orange-100 sm:inline-flex"
         >
-          Request demo
-        </a>
+          Get started
+        </Link>
       </nav>
     </header>
   );
@@ -196,19 +198,6 @@ function Metric({ label, value }) {
   );
 }
 
-function CTA() {
-  return (
-    <section id="cta" className="bg-[#050505] px-5 py-28 text-white md:px-10">
-      <div className="mx-auto max-w-5xl rounded-[2rem] border border-orange-300/25 bg-[radial-gradient(circle_at_50%_0%,rgba(255,106,0,.24),transparent_40%),rgba(255,255,255,.055)] p-8 text-center md:p-14">
-        <p className="text-xs font-bold uppercase tracking-[0.28em] text-orange-200">DSPatch</p>
-        <h2 className="mt-5 text-4xl font-black leading-tight md:text-6xl">A cleaner foundation for the redesign.</h2>
-        <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-white/62">
-          The page is now static apart from the Spline scene, so the next design pass can rebuild motion intentionally.
-        </p>
-      </div>
-    </section>
-  );
-}
 
 function SectionHeader({ eyebrow, title }) {
   return (
@@ -228,7 +217,7 @@ export default function App() {
       <Industries />
       <Operators />
       <MissionControl />
-      <CTA />
+      <OnboardingCTA />
     </main>
   );
 }

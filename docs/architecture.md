@@ -1,8 +1,8 @@
-# DSPatch System Architecture
+# Dspatch System Architecture
 
 ## Overview
 
-DSPatch is an AI-powered business operating system designed for Michigan small and medium-sized businesses (SMBs). It provides an intelligent voice agent that handles inbound calls, creates support tickets automatically, and communicates with customers — freeing business owners to focus on their craft.
+Dspatch is a two-sided AI support platform for small businesses, startups, and recent graduates. Businesses get an AI-powered support system that answers calls and messages, creates and routes tickets, and responds with business context. Recent graduates become Dspatch operators who monitor the system, catch what AI misses, and improve each business's support knowledge over time.
 
 ---
 
@@ -35,8 +35,11 @@ DSPatch is an AI-powered business operating system designed for Michigan small a
                        |
               [ ticket_router.py ]
                        |
-              [ Owner Dashboard ]
+              [ Business Dashboard ]
               (React + API)
+                       |
+              [ Dspatch Operator ]
+              (Human-in-the-loop review)
 ```
 
 ---
@@ -64,10 +67,14 @@ DSPatch is an AI-powered business operating system designed for Michigan small a
 - Priority classification based on keyword analysis
 - Persisted to PostgreSQL with pgvector extension
 
-### 5. Owner Dashboard
-- **React SPA**: Real-time view of tickets, calls, and customer history
-- **index.html + app.jsx**: Lightweight, no build-step dashboard
+### 5. Business Dashboard
+- **React SPA**: View of tickets, calls, customer history, and support state
+- **index.html + app.jsx**: Lightweight landing page/dashboard shell
 - Connects to Flask API backend
+
+### 6. Operator Layer
+- **Dspatch-trained grads**: Review tickets, correct AI misses, improve FAQs, and tune routing rules
+- **Human-in-the-loop workflow**: Keeps the system reliable for small teams that cannot hire full support staff
 
 ---
 
@@ -80,7 +87,8 @@ DSPatch is an AI-powered business operating system designed for Michigan small a
 5. AI generates a response, Gemini synthesizes speech
 6. Audio response streamed back to customer
 7. Ticket automatically created and saved to PostgreSQL
-8. Business owner sees ticket in dashboard
+8. Business sees ticket in dashboard
+9. Dspatch operator can review, correct, or improve the system
 
 ---
 

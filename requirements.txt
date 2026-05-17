@@ -1,0 +1,21 @@
+# Core web + telephony
+flask>=3.0
+flask-cors>=4.0
+twilio>=9.0
+python-dotenv>=1.0
+PyJWT>=2.8
+werkzeug>=3.0
+
+# WebSocket server for Twilio MediaStream voice bridge
+websockets>=15.0
+
+# Database
+psycopg2-binary>=2.9
+pgvector>=0.2
+ibmcloudant>=0.11
+
+# IBM watsonx (optional — only used when WATSONX_ENABLED=true)
+ibm-watsonx-ai>=1.0
+
+# Google Gemini Live (optional — only used when GEMINI_ENABLED=true)
+google-genai>=0.7

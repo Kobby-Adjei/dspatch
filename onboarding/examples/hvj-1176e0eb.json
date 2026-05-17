@@ -1,0 +1,36 @@
+{
+  "id": "hvj-1176e0eb",
+  "name": "hvj",
+  "industry": "home_services",
+  "hours": {
+    "mon-fri": "8am \u2013 6pm",
+    "sat-sun": "9am \u2013 3pm"
+  },
+  "services": [
+    "Emergency service",
+    "Appointment scheduling",
+    "Quote requests",
+    "Drain cleaning",
+    "Water heater repair",
+    "Pipe inspection"
+  ],
+  "pricing": [],
+  "faqs": [],
+  "routing_rules": {
+    "emergency_keywords": [
+      "flood",
+      "flooding",
+      "burst pipe",
+      "no heat",
+      "gas leak"
+    ],
+    "urgent_keywords": [
+      "broken",
+      "not working",
+      "leaking",
+      "backed up"
+    ]
+  },
+  "phone": "+15074794906",
+  "twilio_sid": "PN6ab65790587eb1ee12c84c8f22167518"
+}
